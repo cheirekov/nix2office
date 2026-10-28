@@ -15,7 +15,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from nix2office.config import ConfigError, dump_machine, validate_machine
 from nix2office.deployment import PreparationError, check_destination, pinned_source, prepare
-from nix2office.hardware import parse_probe, eligible_disks, recommendation, probe
+from nix2office.hardware import parse_probe, eligible_disks, recommendation, probe, machine_hardware
 from nix2office.wizard import load_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +78,45 @@ class SchemaTests(unittest.TestCase):
 
 
 class HardwareTests(unittest.TestCase):
+    def test_legacy_amd_with_ram_is_still_light_and_keeps_radeon(self):
+        raw = inventory_text().replace("N2O_MEMORY_KIB=1716224", "N2O_MEMORY_KIB=8388608").replace("N2O_THREADS=2", "N2O_THREADS=4")
+        raw = raw.replace("N2O_VENDOR=GenuineIntel", "N2O_VENDOR=AuthenticAMD\nN2O_FAMILY=22\nN2O_MODEL=0\nN2O_MAX_KHZ=1000000\nN2O_FREQ_DRIVERS=acpi-cpufreq\nN2O_GOVERNORS=ondemand performance schedutil;ondemand performance schedutil;\nN2O_CURRENT_GOVERNORS=schedutil")
+        inv = parse_probe(raw.replace("N2O_GPU=i915", "N2O_GPU=radeon"))
+        self.assertEqual(inv["initrd_modules"], ["radeon"])
+        self.assertEqual(inv["cpu_max_mhz"], 1000)
+        self.assertEqual(recommendation(inv)["profile"], "light")
+        self.assertEqual(recommendation(inv)["cpu_governor"], "schedutil")
+        m = machine()
+        m["hardware"] = machine_hardware(inv)
+        m["performance"]["cpu_governor"] = "schedutil"
+        validate_machine(m)
+        m["performance"]["cpu_governor"] = "powersave"
+        with self.assertRaises(ConfigError):
+            validate_machine(m)
+
+    def test_modern_amd_epp_and_unknown_frequency_driver(self):
+        inv = {"memory_mib": 16384, "threads": 8, "cpu_vendor": "amd", "cpu_family": 25,
+               "cpu_max_mhz": 4500, "frequency_drivers": ["amd-pstate-epp"], "frequency_governors": ["powersave", "performance"]}
+        self.assertEqual(recommendation(inv)["profile"], "standard")
+        self.assertEqual(recommendation(inv)["cpu_governor"], "powersave")
+        inv["frequency_drivers"] = ["acpi-cpufreq"]
+        self.assertEqual(recommendation(inv)["cpu_governor"], "auto")
+        inv["frequency_drivers"] = []
+        self.assertEqual(recommendation(inv)["cpu_governor"], "auto")
+
+    def test_governors_must_be_supported_by_every_policy(self):
+        inv = parse_probe(inventory_text().replace("N2O_GPU=", "N2O_GOVERNORS=performance schedutil;performance;\nN2O_GPU="))
+        self.assertEqual(inv["frequency_governors"], ["performance"])
+        self.assertEqual(recommendation(inv)["cpu_governor"], "auto")
+
+    def test_old_inventory_without_frequency_facts_remains_valid(self):
+        inv = parse_probe(inventory_text())
+        for key in ("cpu_family", "cpu_model", "cpu_max_mhz", "frequency_drivers", "frequency_governors", "frequency_current_governors"):
+            inv.pop(key)
+        m = machine()
+        m["hardware"] = machine_hardware(inv)
+        self.assertEqual(validate_machine(m)["performance"]["cpu_governor"], "auto")
+
     def test_empty_ssh_target_never_probes_controller(self):
         with patch("nix2office.hardware.subprocess.run") as command:
             with self.assertRaises(ConfigError):

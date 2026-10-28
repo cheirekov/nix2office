@@ -55,6 +55,18 @@ the actual configuration input on future rebuilds. See the
 [editable template](examples/machine.toml) and
 [future personal-settings recovery design](docs/personal-settings.md).
 
+To inspect a new target and see recommendations without generating a deployment:
+
+```sh
+nix run .#configure -- --recommend --target rescue-host
+# Or use a private inventory previously collected with --probe:
+nix run .#configure -- --recommend --hardware-json /private/path/hardware.json
+```
+
+The assistant considers older low-power CPUs as well as RAM/thread count,
+preserves detected `radeon`/`amdgpu` graphics, and offers CPU governors supported
+by the target. See [hardware recommendations and CPU policy](docs/hardware-profiles.md).
+
 ## Public modules
 
 This flake exports `nixosModules.office`, `nixosModules.disk` (BIOS or UEFI),

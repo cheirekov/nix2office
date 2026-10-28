@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .config import ConfigError, DEFAULTS, validate_machine, validate_public_key
 from .deployment import PreparationError, check_destination, summary
-from .hardware import eligible_disks, machine_hardware, probe, recommendation
+from .hardware import describe_inventory, eligible_disks, machine_hardware, probe
 
 
 class Cancelled(Exception):
@@ -76,7 +76,7 @@ def wizard(args):
     inventory = None
     if args.hardware_json:
         inventory = load_inventory(args.hardware_json)
-    elif args.target:
+    elif args.target is not None:
         inventory = probe(args.target, args.ssh_config, args.ssh_socket)
     else:
         method = select("Хардуер на офис машината:", [
@@ -94,19 +94,23 @@ def wizard(args):
     if inventory:
         if inventory["architecture"] != "x86_64":
             raise ConfigError("This profile currently supports x86_64 Linux only (including its LibreOffice language pack).")
-        print(f'\nCPU: {inventory["cpu"]}; нишки: {inventory["threads"]}; RAM: {inventory["memory_mib"]} MiB; boot: {inventory["boot_mode"]}')
-        advice = recommendation(inventory)
-        print("Препоръка: " + advice["profile"] + ", Firefox ESR, LibreOffice; PDF: " + advice["pdf_editor"])
-        for note in advice["notes"]:
-            print("• " + note)
+        advice = describe_inventory(inventory)
         m["hardware"] = machine_hardware(inventory)
         m["profile"] = advice["profile"]
+        m["performance"]["cpu_governor"] = advice["cpu_governor"]
         m["boot_mode"] = inventory["boot_mode"] if inventory["boot_mode"] in ("bios", "uefi") else "bios"
     m["profile"] = select("Начален профил (пакетите остават избираеми):", [
         ("light", "Light — Firefox ESR, LibreOffice, PDF Arranger"),
         ("standard", "Standard — същите + Xournal++ за PDF бележки"),
     ], m["profile"])
     m["apps"]["pdf_editor"] = "pdfarranger" if m["profile"] == "light" else "both"
+    governors = [("auto", "Автоматично — запази избора на ядрото")]
+    recommended = m["performance"]["cpu_governor"]
+    if recommended != "auto":
+        governors.insert(0, (recommended, f"Балансирано — {recommended} (препоръчано за открития драйвер)"))
+    if inventory and "performance" in inventory.get("frequency_governors", []):
+        governors.append(("performance", "Performance — висока заявена честота; повече консумация и топлина"))
+    m["performance"]["cpu_governor"] = select("CPU режим (не е овърклок):", governors, recommended)
     disks = eligible_disks(inventory) if inventory else []
     if disks:
         choices = [(d["by_id"][0], f'{d["model"]} | {d["size_bytes"] / 2**30:.1f} GiB | {"HDD" if d["rotational"] else "SSD/flash"} | {d["by_id"][0]}') for d in disks]

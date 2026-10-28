@@ -222,6 +222,7 @@ def summary(m):
     print(f'Приложения: {m["apps"]["browser"]}, {m["apps"]["office"]}, PDF: {m["apps"]["pdf_editor"]}, Nextcloud: {m["apps"]["nextcloud"]}')
     print(f'Клавиатура: US + BG {m["keyboard"]["bulgarian"]}; Workgroup: {m["sharing"]["workgroup"]} ({m["sharing"]["mode"]})')
     print('VPN: ' + (', '.join(k for k in ("wireguard", "tailscale", "zerotier") if m["vpn"][k]) or '(няма)'))
+    print('CPU governor: ' + m["performance"]["cpu_governor"])
 
 
 def completion(dest, m, generated=False, update=False):

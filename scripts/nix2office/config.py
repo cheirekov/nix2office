@@ -20,18 +20,22 @@ DEFAULTS = {
     "boot_mode": "bios",
     "profile": "light",
     "boot_splash": True,
+    "performance": {"cpu_governor": "auto"},
     "user": {"name": "office", "full_name": "Офис", "email": ""},
     "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True},
     "keyboard": {"bulgarian": "phonetic"},
     "sharing": {"mode": "client", "workgroup": "WORKGROUP", "folder": "Shared", "network": "192.0.2.0/24", "read_only": False},
     "vpn": {"wireguard": True, "tailscale": False, "zerotier": False, "zerotier_networks": []},
     "admin": {"network": "192.0.2.0/24", "ssh_public_key": ""},
-    "hardware": {"cpu": "", "cpu_vendor": "unknown", "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": []},
+    "hardware": {"cpu": "", "cpu_vendor": "unknown", "cpu_family": 0, "cpu_model": 0, "cpu_max_mhz": 0,
+                 "frequency_drivers": [], "frequency_governors": [], "frequency_current_governors": [],
+                 "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": []},
 }
 BROWSERS = ("firefox-esr", "chromium", "brave", "google-chrome")
 OFFICES = ("libreoffice", "onlyoffice", "none")
 PDF_EDITORS = ("none", "pdfarranger", "xournalpp", "both")
-GPU_MODULES = ("i915", "xe", "amdgpu", "nouveau")
+GPU_MODULES = ("i915", "xe", "amdgpu", "radeon", "nouveau")
+CPU_GOVERNORS = ("auto", "schedutil", "ondemand", "powersave", "performance")
 RESERVED_USERS = {
     "root", "admin", "nixos", "nobody", "lightdm", "daemon", "bin", "sys", "sync",
     "games", "man", "lp", "mail", "news", "uucp", "proxy", "www-data", "backup",
@@ -146,11 +150,19 @@ def validate_machine(raw):
     text(h["cpu"], "hardware.cpu")
     if h["cpu_vendor"] not in ("intel", "amd", "unknown") or h["boot_mode"] not in ("bios", "uefi", "unknown"):
         raise ConfigError("hardware: invalid CPU vendor or detected boot mode.")
-    for key in ("memory_mib", "threads"):
+    for key in ("memory_mib", "threads", "cpu_family", "cpu_model", "cpu_max_mhz"):
         if type(h[key]) is not int or h[key] < 0:
             raise ConfigError(f"hardware.{key}: expected a non-negative integer.")
     if not isinstance(h["initrd_modules"], list) or any(v not in GPU_MODULES for v in h["initrd_modules"]):
         raise ConfigError("hardware.initrd_modules: unsupported early graphics driver.")
+    for key in ("frequency_drivers", "frequency_governors", "frequency_current_governors"):
+        if not isinstance(h[key], list) or any(not isinstance(v, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", v) for v in h[key]):
+            raise ConfigError(f"hardware.{key}: expected a list of driver/governor names.")
+    governor = m["performance"]["cpu_governor"]
+    if governor not in CPU_GOVERNORS:
+        raise ConfigError("performance.cpu_governor: choose auto, schedutil, ondemand, powersave or performance.")
+    if governor != "auto" and h["frequency_governors"] and governor not in h["frequency_governors"]:
+        raise ConfigError("performance.cpu_governor: not available in this target's hardware snapshot; re-probe before selecting another governor.")
     return m
 
 

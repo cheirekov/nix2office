@@ -7,6 +7,7 @@ let
   admin = m.admin or { };
   hardware = m.hardware or { };
   sharing = m.sharing or { };
+  performance = m.performance or { };
   allowed = {
     root = [
       "version"
@@ -15,6 +16,7 @@ let
       "boot_mode"
       "profile"
       "boot_splash"
+      "performance"
       "user"
       "apps"
       "keyboard"
@@ -28,6 +30,7 @@ let
       "full_name"
       "email"
     ];
+    performance = [ "cpu_governor" ];
     apps = [
       "browser"
       "office"
@@ -55,6 +58,12 @@ let
     hardware = [
       "cpu"
       "cpu_vendor"
+      "cpu_family"
+      "cpu_model"
+      "cpu_max_mhz"
+      "frequency_drivers"
+      "frequency_governors"
+      "frequency_current_governors"
       "memory_mib"
       "threads"
       "boot_mode"
@@ -71,6 +80,7 @@ let
       admin
       hardware
       sharing
+      performance
       ;
   };
 in
@@ -99,10 +109,18 @@ in
             "i915"
             "xe"
             "amdgpu"
+            "radeon"
             "nouveau"
           ]
         ) (hardware.initrd_modules or [ ]);
         message = "Unsupported early graphics driver in machine.toml.";
+      }
+      {
+        assertion =
+          (performance.cpu_governor or "auto") == "auto"
+          || (hardware.frequency_governors or [ ]) == [ ]
+          || builtins.elem performance.cpu_governor hardware.frequency_governors;
+        message = "The requested CPU governor was unavailable in the target snapshot; re-probe before changing it.";
       }
     ];
   networking.hostName = m.hostname;
@@ -139,6 +157,7 @@ in
     adminNetwork = admin.network or "192.0.2.0/24";
     adminAuthorizedKeys = lib.optional ((admin.ssh_public_key or "") != "") admin.ssh_public_key;
     hardware.cpuVendor = hardware.cpu_vendor or "unknown";
+    performance.cpuGovernor = performance.cpu_governor or "auto";
   };
   boot.initrd.kernelModules = hardware.initrd_modules or [ ];
 }

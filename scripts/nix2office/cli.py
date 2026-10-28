@@ -6,8 +6,8 @@ import sys
 
 from .config import ConfigError, load_machine, validate_machine
 from .deployment import PreparationError, check_destination, completion, pinned_source, prepare, summary
-from .hardware import probe
-from .wizard import Cancelled, wizard
+from .hardware import describe_inventory, probe
+from .wizard import Cancelled, load_inventory, wizard
 
 
 def main(legacy=False):
@@ -20,6 +20,7 @@ def main(legacy=False):
     parser.add_argument("--update", action="store_true", help="Update a managed deployment, preserving keys/passwords; requires --config")
     parser.add_argument("--generate-passwords", action="store_true", help="Use random passwords, saved only in ignored credentials.json")
     parser.add_argument("--probe", action="store_true", help="Print read-only hardware inventory as JSON, then exit")
+    parser.add_argument("--recommend", action="store_true", help="Show target hardware and recommendations only; no files, secrets or menus")
     parser.add_argument("--target", help="Probe target through already trusted SSH access")
     parser.add_argument("--ssh-config", type=Path)
     parser.add_argument("--ssh-socket", type=Path)
@@ -34,11 +35,19 @@ def main(legacy=False):
         parser.error("--check requires --config")
     if args.update and not args.config:
         parser.error("--update requires --config")
-    if args.probe and (args.config or args.update or args.check or args.hardware_json):
+    if args.probe and (args.config or args.update or args.check or args.hardware_json or args.recommend):
         parser.error("--probe cannot be combined with configuration preparation")
+    if args.recommend and (args.config or args.update or args.check):
+        parser.error("--recommend cannot be combined with configuration preparation")
+    if args.hardware_json and args.target is not None:
+        parser.error("choose --hardware-json or --target, not both")
     try:
         if args.probe:
             print(json.dumps(probe(args.target, args.ssh_config, args.ssh_socket), ensure_ascii=False, indent=2))
+            return 0
+        if args.recommend:
+            inventory = load_inventory(args.hardware_json) if args.hardware_json else probe(args.target, args.ssh_config, args.ssh_socket)
+            describe_inventory(inventory)
             return 0
         if args.config:
             machine = load_machine(args.config)

@@ -6,6 +6,10 @@ boot_mode = "bios" # bios or uefi; match the rescue USB's boot mode
 profile = "light" # light or standard; starting suggestions, not hard limits
 boot_splash = true
 
+[performance]
+cpu_governor = "auto" # auto, schedutil, ondemand, powersave, performance
+# The assistant recommends only a governor reported by the TARGET driver.
+
 [user]
 name = "maria" # Linux login and home directory
 full_name = "Мария Димитрова" # displayed name, independent of login
@@ -41,6 +45,12 @@ ssh_public_key = "" # empty means SSH disabled; admin can still log in locally
 # The assistant fills these from the TARGET, not the build machine.
 cpu = ""
 cpu_vendor = "unknown" # intel, amd, unknown
+cpu_family = 0 # CPUID family, decimal; 0 means unknown
+cpu_model = 0
+cpu_max_mhz = 0 # reported CPU policy maximum, not a measured turbo ceiling
+frequency_drivers = []
+frequency_governors = [] # governors available on every detected CPU policy
+frequency_current_governors = []
 memory_mib = 0
 threads = 0
 boot_mode = "unknown" # detected mode; root boot_mode above is the chosen mode

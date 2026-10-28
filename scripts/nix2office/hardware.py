@@ -3,7 +3,7 @@ import json
 import re
 import subprocess
 
-from .config import ConfigError, GPU_MODULES
+from .config import ConfigError, DEFAULTS, GPU_MODULES
 
 
 PROBE = r'''set -eu
@@ -12,6 +12,12 @@ printf 'N2O_MEMORY_KIB='; awk '/^MemTotal:/ { print $2 }' /proc/meminfo
 printf 'N2O_THREADS='; awk '/^processor[[:space:]]*:/ { n++ } END { print n+0 }' /proc/cpuinfo
 printf 'N2O_CPU='; sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n 1
 printf 'N2O_VENDOR='; sed -n 's/^vendor_id[[:space:]]*: //p' /proc/cpuinfo | head -n 1
+printf 'N2O_FAMILY='; awk '/^cpu family[[:space:]]*:/ { print $4; exit }' /proc/cpuinfo
+printf 'N2O_MODEL='; awk '/^model[[:space:]]*:/ { print $3; exit }' /proc/cpuinfo
+printf 'N2O_MAX_KHZ='; for p in /sys/devices/system/cpu/cpufreq/policy*/cpuinfo_max_freq; do test ! -r "$p" || cat "$p"; done | awk 'BEGIN { max=0 } $1>max { max=$1 } END { print max }'
+printf 'N2O_FREQ_DRIVERS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_driver; do test ! -r "$p" || cat "$p"; done | sort -u | tr '\n' ' '; printf '\n'
+printf 'N2O_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_available_governors; do test ! -r "$p" || { tr '\n' ' ' < "$p"; printf ';'; }; done; printf '\n'
+printf 'N2O_CURRENT_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do test ! -r "$p" || cat "$p"; done | sort -u | tr '\n' ' '; printf '\n'
 printf 'N2O_ARCH='; uname -m
 printf 'N2O_BOOT='; if test -d /sys/firmware/efi; then echo uefi; else echo bios; fi
 printf 'N2O_GPU='; for m in /sys/class/drm/card*/device/driver/module; do test ! -e "$m" || basename "$(readlink -f "$m")"; done
@@ -45,6 +51,8 @@ def parse_probe(output, source="local"):
         # GPU driver names can occupy several lines. Only accept known KMS drivers.
         gpu_text = facts.split("N2O_GPU=", 1)[1]
         modules = sorted(set(gpu_text.splitlines()) & set(GPU_MODULES))
+        policy_governors = [set(part.split()) for part in fields.get("N2O_GOVERNORS", "").split(";") if part.strip()]
+        governors = sorted(set.intersection(*policy_governors)) if policy_governors else []
         disks = []
         for d in devices:
             if d.get("type") != "disk":
@@ -61,6 +69,12 @@ def parse_probe(output, source="local"):
                           "rotational": bool(d.get("rota")), "read_only": bool(d.get("ro")), "mountpoints": mounts})
         return {"source": source, "architecture": _clean(fields["N2O_ARCH"]), "cpu": _clean(fields["N2O_CPU"]),
                 "cpu_vendor": vendor, "memory_mib": int(fields["N2O_MEMORY_KIB"]) // 1024,
+                "cpu_family": int(fields.get("N2O_FAMILY", "0") or "0"),
+                "cpu_model": int(fields.get("N2O_MODEL", "0") or "0"),
+                "cpu_max_mhz": int(fields.get("N2O_MAX_KHZ", "0") or "0") // 1000,
+                "frequency_drivers": sorted(set(fields.get("N2O_FREQ_DRIVERS", "").split())),
+                "frequency_governors": governors,
+                "frequency_current_governors": sorted(set(fields.get("N2O_CURRENT_GOVERNORS", "").split())),
                 "threads": int(fields["N2O_THREADS"]), "boot_mode": fields["N2O_BOOT"],
                 "initrd_modules": modules, "disks": disks}
     except (ValueError, KeyError, TypeError):
@@ -94,15 +108,57 @@ def eligible_disks(inventory):
 def recommendation(inventory):
     memory = inventory.get("memory_mib", 0)
     threads = inventory.get("threads", 0)
-    light = memory < 4096 or threads <= 2
+    # Family 14h/16h are AMD's Bobcat/Jaguar/Puma low-power CPUs. Four cores alone
+    # do not make these a fast desktop. A low reported policy maximum is also
+    # a conservative signal, never a cross-architecture performance benchmark.
+    legacy_amd = inventory.get("cpu_vendor") == "amd" and inventory.get("cpu_family") in (20, 22)
+    low_clock = 0 < inventory.get("cpu_max_mhz", 0) <= 1600
+    light = memory < 4096 or threads <= 2 or legacy_amd or low_clock
     notes = ["Препоръките са отправна точка, а не гарантиран капацитет или сравнение на браузъри."]
     if memory < 2048:
         notes.append("Малко RAM: малко браузърни табове и избирателна Nextcloud синхронизация; не включвай ненужни VPN услуги.")
+    if legacy_amd or low_clock:
+        notes.append("По-слаб CPU: Light е по-консервативният начален избор дори при достатъчно RAM; броят ядра не е измерване на скоростта.")
+    if inventory.get("cpu_vendor") == "amd":
+        notes.append("AMD microcode и redistributable firmware се включват; amd-pstate не се налага на неподдържан процесор.")
+    if "radeon" in inventory.get("initrd_modules", []):
+        notes.append("Открит е radeon: запазваме работещия драйвер и го зареждаме рано за splash; без принудително преминаване към amdgpu.")
     if any(d.get("rotational") for d in eligible_disks(inventory)):
         notes.append("Има механичен диск; SSD би помогнал при отваряне на приложения и swap.")
-    return {"profile": "light" if light else "standard", "browser": "firefox-esr", "office": "libreoffice",
+    governor = balanced_governor(inventory)
+    notes.append("CPU governor: " + governor + ". Performance остава избор за сравнение след инсталация, с повече консумация/топлина; няма обещан процент ускорение.")
+    return {"profile": "light" if light else "standard", "cpu_governor": governor, "browser": "firefox-esr", "office": "libreoffice",
             "pdf_editor": "pdfarranger" if light else "both", "notes": notes}
 
 
 def machine_hardware(inventory):
-    return {k: inventory[k] for k in ("cpu", "cpu_vendor", "memory_mib", "threads", "boot_mode", "initrd_modules")}
+    # Old saved inventories remain valid and get unknown/empty new facts.
+    return {k: inventory.get(k, default) for k, default in DEFAULTS["hardware"].items()}
+
+
+def balanced_governor(inventory):
+    available = inventory.get("frequency_governors", [])
+    drivers = inventory.get("frequency_drivers", [])
+    # With active P-state drivers, powersave is dynamic, not a minimum-clock lock.
+    # Never recommend it for generic acpi-cpufreq (where semantics differ).
+    if drivers and all(d in ("intel_pstate", "amd-pstate-epp") for d in drivers):
+        return "powersave" if "powersave" in available else "auto"
+    for governor in ("schedutil", "ondemand"):
+        if governor in available:
+            return governor
+    return "auto"
+
+
+def describe_inventory(inventory):
+    advice = recommendation(inventory)
+    print(f'CPU: {inventory["cpu"]}; нишки: {inventory["threads"]}; RAM: {inventory["memory_mib"]} MiB; boot: {inventory["boot_mode"]}')
+    print(f'CPU policy maximum: {inventory.get("cpu_max_mhz", 0) or "unknown"} MHz (не е измерен turbo максимум)')
+    print('Честотен драйвер: ' + (', '.join(inventory.get("frequency_drivers", [])) or 'unknown'))
+    print('Текущ governor: ' + (', '.join(inventory.get("frequency_current_governors", [])) or 'unknown'))
+    print('Графични драйвери: ' + (', '.join(inventory["initrd_modules"]) or 'unknown'))
+    for disk in eligible_disks(inventory):
+        print(f'Вътрешен диск: {disk["model"]} | {disk["size_bytes"] / 2**30:.1f} GiB | {"HDD" if disk["rotational"] else "SSD/flash"}')
+    print('Препоръка: ' + advice['profile'] + ', Firefox ESR, LibreOffice; PDF: ' + advice['pdf_editor'])
+    for note in advice['notes']:
+        print('• ' + note)
+    return advice

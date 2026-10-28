@@ -15,6 +15,17 @@ in
 {
   imports = [ ./networking.nix ];
   options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
+    performance.cpuGovernor = lib.mkOption {
+      type = lib.types.enum [
+        "auto"
+        "schedutil"
+        "ondemand"
+        "powersave"
+        "performance"
+      ];
+      default = "auto";
+      description = "CPU frequency governor; auto leaves the kernel default. The assistant recommends from the target's available governors.";
+    };
     hardware.cpuVendor = lib.mkOption {
       type = lib.types.enum [
         "intel"
@@ -139,6 +150,9 @@ in
     hardware.graphics.enable = true;
     hardware.cpu.intel.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "intel");
     hardware.cpu.amd.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "amd");
+    powerManagement.cpuFreqGovernor = lib.mkIf (
+      cfg.performance.cpuGovernor != "auto"
+    ) cfg.performance.cpuGovernor;
     hardware.enableRedistributableFirmware = true;
     security.rtkit.enable = true;
     services.pipewire = {
