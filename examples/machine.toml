@@ -1,0 +1,47 @@
+# Copy this file into your private deployment; never add passwords or tokens.
+version = 1
+hostname = "office-pc"
+disk = "/dev/disk/by-id/ata-REPLACE_WITH_INTERNAL_SSD"
+boot_mode = "bios" # bios or uefi; match the rescue USB's boot mode
+profile = "light" # light or standard; starting suggestions, not hard limits
+boot_splash = true
+
+[user]
+name = "maria" # Linux login and home directory
+full_name = "Мария Димитрова" # displayed name, independent of login
+email = "maria@example.org" # optional metadata, no automatic account setup
+
+[apps]
+browser = "firefox-esr" # firefox-esr, chromium, brave, google-chrome
+office = "libreoffice" # libreoffice, onlyoffice, none
+pdf_editor = "pdfarranger" # none, pdfarranger, xournalpp, both
+nextcloud = true
+
+[keyboard]
+bulgarian = "phonetic" # phonetic or bds, alongside US English
+
+[sharing]
+mode = "client" # client or both (authenticated server too)
+workgroup = "WORKGROUP"
+folder = "Shared" # dedicated folder under the desktop user's home
+network = "192.0.2.0/24" # replace with your LAN before enabling the server
+read_only = false
+
+[vpn]
+wireguard = true # import a runtime profile through NetworkManager
+tailscale = false # service + Trayscale sign-in; no auth tokens in this file
+zerotier = false # service + optional network IDs; controller approval may follow
+zerotier_networks = []
+
+[admin]
+network = "192.0.2.0/24" # replace with your LAN before enabling SSH
+ssh_public_key = "" # empty means SSH disabled; admin can still log in locally
+
+[hardware]
+# The assistant fills these from the TARGET, not the build machine.
+cpu = ""
+cpu_vendor = "unknown" # intel, amd, unknown
+memory_mib = 0
+threads = 0
+boot_mode = "unknown" # detected mode; root boot_mode above is the chosen mode
+initrd_modules = [] # detected KMS drivers, e.g. ["i915"]

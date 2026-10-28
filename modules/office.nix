@@ -6,10 +6,24 @@
 }:
 let
   cfg = config.nix2office;
-  libreofficeBg = import ../packages/libreoffice-bg.nix { inherit pkgs; };
+  applications = import ../lib/applications.nix {
+    inherit pkgs;
+    inherit (cfg) apps;
+  };
+  bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
 in
 {
-  options.nix2office = {
+  imports = [ ./networking.nix ];
+  options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
+    hardware.cpuVendor = lib.mkOption {
+      type = lib.types.enum [
+        "intel"
+        "amd"
+        "unknown"
+      ];
+      default = "intel";
+      description = "CPU vendor for microcode; the assistant detects it on the target.";
+    };
     bootSplash.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -21,7 +35,7 @@ in
       description = "Public SSH keys allowed to log in as admin.";
     };
     adminNetwork = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.strMatching "[0-9.]+/[0-9]+";
       default = "192.0.2.0/24";
       description = "Trusted IPv4 CIDR for administrative SSH. Set this in the deployment.";
     };
@@ -38,6 +52,27 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        assertion = (import ../lib/valid-ipv4-cidr.nix lib) cfg.adminNetwork;
+        message = "Administrative access requires a specific IPv4 CIDR with prefix 1 through 32.";
+      }
+      {
+        assertion =
+          !(builtins.elem cfg.user.name [
+            "root"
+            "admin"
+            "nobody"
+            "lightdm"
+            "nixos"
+          ]);
+        message = "Choose a separate desktop login name, not a reserved or administrator account.";
+      }
+      {
+        assertion = builtins.match "[^:\n\r,]*" cfg.user.fullName != null;
+        message = "The displayed full name must not contain colons, commas or line breaks (GECOS separators).";
+      }
+    ];
     system.stateVersion = lib.mkDefault "26.05";
     boot.plymouth = {
       enable = cfg.bootSplash.enable;
@@ -68,7 +103,7 @@ in
       enable = true;
       xkb = {
         layout = "us,bg";
-        variant = ",phonetic";
+        variant = ",${bulgarianVariant}";
         options = "grp:alt_shift_toggle";
       };
       desktopManager.xfce.enable = true;
@@ -84,7 +119,11 @@ in
         "~power"
       ];
       # LightDM's fallback uses a tab before variants; libxklavier uses an underscore.
-      displayManager.lightdm.greeters.gtk.extraConfig = "keyboard-layouts=us;bg\tphonetic;bg_phonetic";
+      displayManager.lightdm.greeters.gtk.extraConfig =
+        if bulgarianVariant == "" then
+          "keyboard-layouts=us;bg"
+        else
+          "keyboard-layouts=us;bg\t${bulgarianVariant};bg_${bulgarianVariant}";
       # The greeter may replace the server keymap when a password layout is selected.
       displayManager.sessionCommands = ''
         ${lib.getExe pkgs.setxkbmap} \
@@ -98,7 +137,8 @@ in
     services.libinput.enable = true;
     programs.xfconf.enable = true;
     hardware.graphics.enable = true;
-    hardware.cpu.intel.updateMicrocode = lib.mkDefault true;
+    hardware.cpu.intel.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "intel");
+    hardware.cpu.amd.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "amd");
     hardware.enableRedistributableFirmware = true;
     security.rtkit.enable = true;
     services.pipewire = {
@@ -133,9 +173,9 @@ in
     users.mutableUsers = false;
     users.users = {
       root.hashedPassword = "!";
-      office = {
+      ${cfg.user.name} = {
         isNormalUser = true;
-        description = "Офис";
+        description = cfg.user.fullName;
         extraGroups = [
           "networkmanager"
           "scanner"
@@ -190,7 +230,7 @@ in
     services.tumbler.enable = true;
     services.fstrim.enable = true;
     programs.firefox = {
-      enable = true;
+      enable = cfg.apps.browser == "firefox-esr";
       package = pkgs.firefox-esr;
       languagePacks = [ "bg" ];
       preferences."intl.locale.requested" = "bg";
@@ -209,25 +249,40 @@ in
       noto-fonts
       noto-fonts-color-emoji
     ];
-    environment.systemPackages = with pkgs; [
-      libreofficeBg
-      atril
-      simple-scan
-      nextcloud-client
-      pavucontrol
-      xfce4-whiskermenu-plugin
-      xfce4-xkb-plugin
-      thunar-archive-plugin
-      xarchiver
-      hunspell
-      hunspellDicts.en_US
-      htop
-      nano
-    ];
+    # Allow only the explicitly selected proprietary browser, not every unfree package.
+    nixpkgs.config.allowUnfreePredicate = pkg: lib.getName pkg == "google-chrome";
+    environment.systemPackages =
+      (with pkgs; [
+        atril
+        simple-scan
+        pavucontrol
+        xfce4-whiskermenu-plugin
+        xfce4-xkb-plugin
+        thunar-archive-plugin
+        xarchiver
+        hunspell
+        hunspellDicts.en_US
+        htop
+        nano
+      ])
+      ++ applications.officePackages
+      ++ applications.pdfPackages
+      ++ lib.optional (cfg.apps.browser != "firefox-esr") applications.browser.package
+      ++ lib.optional cfg.apps.nextcloud pkgs.nextcloud-client;
     home-manager = {
       useGlobalPkgs = true;
       useUserPackages = true;
-      users.office = import ../home/office.nix;
+      users.${cfg.user.name} = {
+        imports = [ ../home/office.nix ];
+        nix2office = {
+          inherit (cfg)
+            user
+            apps
+            keyboard
+            vpn
+            ;
+        };
+      };
     };
   };
 }

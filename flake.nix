@@ -35,7 +35,14 @@
             ./modules/legacy-bios.nix
           ];
         };
+        disk = {
+          imports = [
+            inputs.disko.nixosModules.disko
+            ./modules/disk.nix
+          ];
+        };
       };
+      lib.machineModule = file: import ./modules/machine.nix file;
       homeManagerModules.office = import ./home/office.nix;
       nixosConfigurations.office-example = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
@@ -46,12 +53,44 @@
         ];
       };
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
+      packages.x86_64-linux.configure =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          python = pkgs.python3.withPackages (p: [ p.questionary ]);
+        in
+        pkgs.writeShellApplication {
+          name = "nix2office-configure";
+          runtimeInputs = with pkgs; [
+            python
+            age
+            sops
+            mkpasswd
+            git
+            openssh
+            util-linux
+            coreutils
+            gawk
+            gnused
+          ];
+          text = ''
+            export NIX2OFFICE_SOURCE=${
+              nixpkgs.lib.escapeShellArg (if self ? rev then "github:cheirekov/nix2office/${self.rev}" else "")
+            }
+            exec ${python}/bin/python ${./scripts}/configure.py "$@"
+          '';
+        };
+      apps.x86_64-linux.configure = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.configure}/bin/nix2office-configure";
+      };
+      apps.x86_64-linux.default = self.apps.x86_64-linux.configure;
       devShells.x86_64-linux.default =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
         in
         pkgs.mkShellNoCC {
           packages = with pkgs; [
+            (python3.withPackages (p: [ p.questionary ]))
             age
             sops
             mkpasswd

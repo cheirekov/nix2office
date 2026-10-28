@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import shlex
 import subprocess
+import tomllib
 
 
 def quote(value):
@@ -34,6 +35,15 @@ subprocess.run(ssh + ["-O", "check", args.target], check=True)
 
 def remote(command, **kwargs):
     return subprocess.run(ssh + [args.target, command], check=True, **kwargs)
+
+
+if (deploy / "machine.toml").is_file():
+    mode = tomllib.loads((deploy / "machine.toml").read_text())["boot_mode"]
+    expected_uefi = mode == "uefi"
+    actual_uefi = remote("if test -d /sys/firmware/efi; then echo uefi; else echo bios; fi",
+                         capture_output=True, text=True).stdout.strip() == "uefi"
+    if actual_uefi != expected_uefi:
+        raise SystemExit("Rescue boot mode differs from machine.toml; reboot the USB in the selected BIOS/UEFI mode first.")
 
 
 remote("set -eu; d=" + quote(args.disk) + "; test -b \"$d\"; "
@@ -86,7 +96,7 @@ transfer(system, "/mnt")
 remote("sudo -n install -Dm600 /dev/stdin /mnt/var/lib/sops-nix/key.txt",
        input=(deploy / "keys/host.age").read_bytes())
 remote("sudo -n nix-store --store /mnt -qR " + quote(system) + " >/dev/null")
-print("Installing system and BIOS bootloader", flush=True)
+print("Installing system and configured bootloader", flush=True)
 remote("sudo -n nixos-install --root /mnt --system " + quote(system) +
        " --no-root-password --no-channel-copy --option builders ''")
 # Establish the installed host key over the trusted live SSH connection.

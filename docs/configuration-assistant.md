@@ -1,65 +1,209 @@
-# A simpler setup interface (proposal)
+# Configuration assistant
 
-The current initializer asks for host, disk, administrator network and SSH key,
-but the desktop username and application set are fixed in the office module.
-Changing those still requires editing Nix. A template alone would not remove
-that limitation.
+The assistant prepares a private flake from an editable `machine.toml`. It does
+not format a disk, install or activate NixOS, start a VPN, or sign in to accounts.
+Menus use arrow keys and Enter; VPN checkboxes use Space. Ctrl+C cancels.
 
-The next interface should be a small terminal assistant plus an editable
-`machine.toml` inside the ignored private deployment. It would generate the same
-ordinary Nix configuration that advanced users can inspect and extend. No
-additional background service is needed on the office machine.
+## Start with the target's hardware
 
-This is an illustrative format, not an accepted input to today's initializer:
+From a clean, committed checkout:
 
-```toml
-hostname = "office-pc"
-desktop_user = "maria"
-profile = "light"
-browser = "firefox-esr"
-office = "libreoffice"
-nextcloud = true
-boot_splash = true
-
-[sharing]
-mode = "client" # proposed choices: off, client, both
-workgroup = "WORKGROUP"
+```sh
+nix run --option builders '' .#configure
+# Keep an existing deployment intact by choosing a new output:
+nix run --option builders '' .#configure -- --output .deployment/new-office
 ```
 
-The assistant should read hardware facts and offer a recommendation before the
-user chooses applications. The initial guidance would be conservative:
+Without a checkout, use the public app from a private working directory:
 
-| Hardware | Suggested starting point |
+```sh
+nix run --option builders '' github:cheirekov/nix2office#configure
+```
+
+The helper pins its generated flake to an immutable public Git revision. In a
+local checkout it requires committed changes; the packaged app knows its public
+revision. `--source github:OWNER/REPO/FULL_40_DIGIT_REVISION` supports a fork.
+Inside another Git repository, the output must be covered by private ignore
+rules. Existing directories are never replaced by a fresh preparation.
+
+Choose **remote SSH**, **this computer**, **saved JSON**, or **manual**. Only
+choose this computer if it is the intended installation target. Remote probing
+requires an already trusted host key and working key authentication; the helper
+never asks for an SSH password or disables host-key checking. It reads `/proc`,
+sysfs, `lsblk` and persistent disk aliases without sudo or modifications.
+
+```sh
+nix run .#configure -- --target rescue-host --output .deployment/new-office
+# Optional: --ssh-config /path/to/config --ssh-socket /path/to/control.sock
+
+# Alternatively, collect facts on the target, then transfer the JSON securely:
+nix run .#configure -- --probe > hardware.json
+nix run .#configure -- --hardware-json hardware.json --output .deployment/new-office
+```
+
+Hardware reports contain device identifiers: keep them private. The target
+needs Linux and `lsblk`; it does not need Python for remote discovery. Suggested
+disks exclude USB, read-only devices and disks without a persistent by-id. A
+mounted disk may be selected for a **future** installation; the separate
+installer still refuses to format it while mounted. Manual input cannot prove
+which physical device was selected. Installation needs a whole internal disk.
+
+Recommendations are deliberately simple:
+
+| Detected hardware | Starting suggestion |
 | --- | --- |
-| Around 2 GiB RAM and an older dual-core CPU | Light XFCE profile; few browser tabs; selective Nextcloud sync |
-| 4 GiB RAM | Same profile with more room for simultaneous applications |
-| 8 GiB or more | Choose applications primarily by compatibility and preference |
+| Less than 4 GiB usable RAM, or at most two CPU threads | Light: Firefox ESR, LibreOffice, PDF Arranger |
+| At least 4 GiB and more than two threads | Standard: same apps plus Xournal++ |
+| Less than 2 GiB | Few browser tabs, selective Nextcloud sync, enable only needed VPN services |
 
-These are starting recommendations, not measured capacity guarantees. The
-current experimental machine gives a useful reference for the light profile.
-Browser alternatives need their own packaging and integration checks; there
-is no measured Firefox/Brave/Chromium memory ranking in this project.
+These are editable suggestions, not memory benchmarks or capacity guarantees.
+Profiles select initial choices; explicit `[apps]` values take precedence.
+Both profiles use XFCE/Xorg. x86_64 Linux is currently required, including by the
+pinned Bulgarian LibreOffice bundle. CPU vendor, graphics driver and rescue
+boot mode are detected; BIOS/UEFI is confirmed in the menu. UEFI uses
+systemd-boot and an ESP; BIOS uses GRUB. This is not a Secure Boot setup.
 
-Passwords must never be TOML values, command-line arguments or Nix strings.
-The assistant would collect them through hidden terminal prompts, hash them,
-and encrypt the hashes for sops-nix. Private age identities stay outside Git
-and the Nix store. The public template contains no deployment-specific values.
+## Choices and identity
 
-For Windows sharing, client access is already included. The optional server
-mode should additionally ask for the directory, allowed users, write access
-and trusted network, then generate an authenticated Samba share. It must not
-silently create a guest share or expose every user directory. A workgroup name
-groups machines; it does not grant access or join an Active Directory domain.
+[The complete template](../examples/machine.toml) lists every accepted field.
+The essential distinction is:
 
-Implementation order:
+```toml
+[user]
+name = "maria"
+full_name = "Мария Димитрова"
+email = "maria@example.org"
+```
 
-1. Add module options for the desktop username, browser and optional application
-   groups. Update Home Manager and secret wiring to use those options together.
-2. Teach the private deployment initializer to read and validate the TOML file,
-   while retaining explicit command-line use.
-3. Add interactive questions, hardware recommendations and a review of the
-   selected disk and generated configuration before installation.
+`name` is the Linux login and `/home/maria`; `full_name` is displayed at login.
+The e-mail is optional metadata for future integrations. Home Manager exposes
+these fields in `~/.config/nix2office/user.json`. They are configuration, not
+secrets, and are also visible in the local Nix store. No mail/Nextcloud/VPN
+account is configured from this address.
 
-For the existing installation, changing the desktop username would need a
-separate migration of the home directory, ownership and keyring. This proposal
-does not perform that migration or alter the installed user's identity.
+| Selection | Values and behavior |
+| --- | --- |
+| Browser | `firefox-esr`, `chromium`, `brave`, `google-chrome`; matching desktop shortcut, XFCE browser helper and HTTP/HTTPS associations |
+| Office | `libreoffice` with Bulgarian translations and initial Tabbed layout; `onlyoffice` Desktop Editors; `none` |
+| PDF | `pdfarranger` for page ordering/merging/splitting; `xournalpp` for handwriting/annotations; `both`; `none`. Atril always reads PDFs. LibreOffice includes Draw for basic PDF edits. These tools do not promise Acrobat-equivalent document fidelity. |
+| Nextcloud | Optional desktop client and autostart; accounts and folders chosen in its GUI |
+| Keyboard | `phonetic` or `bds`, alongside US English; language indicator and Alt+Shift, including a login layout selector |
+| Splash | On/off; spinner with detected early graphics driver where supported |
+
+Google Chrome is proprietary: choosing it allows that package's unfree license;
+the project does not enable every unfree package. Browser RAM usage depends on
+workload; the assistant makes no unsupported ranking of browser alternatives.
+
+## Sharing and VPNs
+
+Workgroup defaults to `WORKGROUP` and is editable. It groups SMB machines; it
+is neither authentication nor Active Directory enrollment.
+
+- `sharing.mode = "client"`: browse `smb://SERVER/SHARE` from Thunar. No file
+  server is started.
+- `sharing.mode = "both"`: additionally serve **one dedicated folder** under
+  the desktop user's home. SMB2+, no guest login, only that user, and TCP 445
+  allowed from the specified IPv4 LAN CIDR. Choose read-only or writable access.
+  After installation, admin sets a separate Samba credential with
+  `sudo smbpasswd -a maria`. Use `\\HOST\Shared` from Windows. Automatic Windows
+  discovery/NetBIOS and domain joining are not included.
+
+The VPN menu selects installed clients/services, not credentials:
+
+- **WireGuard:** NetworkManager supports WireGuard natively. Import a `.conf`
+  through its connection editor or `nmcli connection import type wireguard file
+  /private/path/wg.conf`. Private keys belong in runtime profiles, never TOML.
+- **Tailscale:** its daemon plus Trayscale GUI, configured so the desktop user
+  can operate the local client. Sign in through Trayscale after installation.
+  Trayscale is a separate tray app, not a NetworkManager plugin. No exit-node or
+  subnet-router role is enabled by this template.
+- **ZeroTier:** its daemon, optional public network IDs in TOML, and admin CLI
+  management (`sudo zerotier-cli join NETWORK_ID`). The network controller may
+  require approval. There is no bundled NetworkManager plugin or ZeroTier GUI.
+  Removing an ID from TOML does **not** leave a previously joined network:
+  explicitly run `sudo zerotier-cli leave NETWORK_ID`.
+
+Tailscale/ZeroTier keep their state under `/var/lib`; NetworkManager is told to
+leave their interfaces alone. Enabling these options can open their daemon's
+UDP transport port; SSH and SMB keep their separately configured LAN rules.
+VPN enrollment and account/device identity are post-installation steps.
+
+## Passwords and private output
+
+Review the selected machine before generating files. Choose hidden password
+prompts (at least eight characters) or generated random passwords. Entered
+passwords are never written as plaintext; generated passwords are only in the
+ignored mode-0600 `credentials.json`. The helper sends passwords to `mkpasswd`
+via stdin, then SOPS-encrypts **yescrypt hashes**, also through stdin. Child
+output is captured so errors do not echo secret input.
+
+The private directory is mode 0700 and contains its own Git repository:
+
+- `machine.toml`, `flake.nix`, `host.nix`: declarative configuration.
+- `secrets.yaml`: encrypted `office` and `admin` hashes. `office` is a secret
+  role name even when the actual desktop login is `maria`.
+- `.sops.yaml`: public age recipients; `.nix2office.json`: managed-deployment marker.
+- `keys/host.age`, `keys/operator.age`: private identities, ignored, mode 0600.
+
+The office user has no sudo; `admin` has password-protected sudo. SSH is disabled
+unless a public administrator key and trusted LAN are supplied. Root and SSH
+password login remain disabled. The host age key must be provisioned before
+first activation, as described in the main README.
+
+**Never** use `path:.deployment`, `git add -f` for private files, or put passwords,
+auth tokens or private keys in TOML/Nix strings. Always use the private **Git**
+flake. The helper does not migrate the existing experimental deployment.
+
+## Edit and rebuild
+
+The TOML is a real input read by the Nix modules on every evaluation, not a
+one-time export. To validate a hand-edited file without prompts or writes:
+
+```sh
+nix run .#configure -- --config .deployment/new-office/machine.toml --check
+```
+
+To prepare from a copied template, including fresh hidden password prompts:
+
+```sh
+cp examples/machine.toml /private/path/machine.toml
+# Edit disk, names, LAN and application choices first.
+nix run .#configure -- --config /private/path/machine.toml --output .deployment/new-office
+# Add --generate-passwords for unattended generation.
+```
+
+Then lock, evaluate and build. Replace `office-pc` with the configured hostname:
+
+```sh
+nix flake lock ./.deployment/new-office
+git -C .deployment/new-office add machine.toml flake.lock
+nix eval ./.deployment/new-office#nixosConfigurations.office-pc.config.system.build.toplevel.drvPath
+nix build --option builders '' \
+  ./.deployment/new-office#nixosConfigurations.office-pc.config.system.build.toplevel \
+  ./.deployment/new-office#nixosConfigurations.office-pc.config.system.build.diskoScript \
+  --out-link .deployment/new-office/result
+```
+
+Installation remains a separate deliberate operation; see the main README.
+After installation, ordinary edits to applications/displayed name/e-mail/layout
+need validation and rebuild. The login name is guarded: renaming an installed
+user requires an explicit home/ownership/keyring migration or a new deployment.
+Do not use the disk-formatting installer to apply ordinary updates.
+
+To repin an assistant-created deployment to a newly committed public source,
+without rotating secrets:
+
+```sh
+nix run .#configure -- --config .deployment/new-office/machine.toml \
+  --output .deployment/new-office --update
+nix flake update --flake .deployment/new-office nix2office
+```
+
+`--update` refuses legacy deployments and login renames and preserves the age
+keys, encrypted hashes and generated credentials. Direct TOML edits do not
+require running it. The explicit `scripts/init-deployment.py --config ...`
+interface is also available under `nix develop`; its old hostname/disk/LAN/key
+arguments still work.
+
+For future backup of mutable personal preferences, see
+[Personal settings and recovery](personal-settings.md). No backup job is enabled.

@@ -8,7 +8,8 @@ and scanning, and the Nextcloud desktop sync client.
 ## Everyday desktop controls
 
 - The taskbar shows the current keyboard language as text. Click it or press
-  **Alt+Shift** to switch between English and Bulgarian phonetic input.
+  **Alt+Shift** to switch between English and the selected Bulgarian layout
+  (phonetic or BDS).
   The LightDM login screen also has a keyboard layout selector, so passwords
   can be entered with the appropriate layout before starting the desktop.
 - Open **Settings → Звук** (Sound), or the sound settings from the taskbar volume
@@ -16,8 +17,9 @@ and scanning, and the Nextcloud desktop sync client.
   **Output Devices**, choose the output and volume. WirePlumber remembers the
   selection. A connected display must support audio for HDMI playback.
 - Firefox ESR is registered with both the desktop's browser helper and its URL
-  associations, including links opened by Nextcloud. The migration repairs the
-  old `firefox` helper; unrelated user browser choices are preserved.
+  associations, including links opened by Nextcloud. The browser selected in
+  `machine.toml` is reapplied at each Home Manager activation, including its XFCE
+  helper and URL associations.
 - Application shortcuts are executable, user-owned desktop files. Home Manager
   refreshes the supplied shortcuts on activation; their contents are managed by
   this profile.
@@ -27,24 +29,44 @@ and scanning, and the Nextcloud desktop sync client.
   `boot.initrd.kernelModules` (for example, `"i915"` for supported Intel graphics).
 
 Thunar includes SMB client support: use **Go → Open Location** and enter
-`smb://SERVER/SHARE`. This does not enable a file server on the office machine.
-Serving a folder to Windows requires a separate Samba configuration with the
-chosen workgroup, shared directory, user access and permitted network.
+`smb://SERVER/SHARE`. The assistant also offers an authenticated Samba server
+for one folder, with the selected Workgroup and a trusted LAN. WireGuard uses
+NetworkManager; optional Tailscale has Trayscale GUI; ZeroTier uses its daemon
+and admin CLI. Account enrollment remains interactive after installation.
 
-For a proposed simpler setup workflow, see
-[the configuration assistant design](docs/configuration-assistant.md).
-That assistant is a proposal; the initializer below is the current interface.
+## Start with the assistant
+
+```sh
+nix run --option builders '' .#configure
+# An existing .deployment is preserved; prepare another machine with:
+nix run --option builders '' .#configure -- --output .deployment/new-office
+```
+
+Outside a checkout, run `nix run github:cheirekov/nix2office#configure` from a
+private directory. The terminal assistant discovers the **target** hardware,
+suggests a light/standard starting profile, then offers menus for browser,
+office, PDF tools, Nextcloud, keyboard, sharing and VPN clients. It separates the
+login (`maria`), displayed name (`Мария Димитрова`) and optional e-mail.
+
+It prepares a private Git flake and SOPS-encrypted password hashes. It does not
+build, erase, install or modify the target. The resulting `machine.toml` remains
+the actual configuration input on future rebuilds. See the
+[complete guide](docs/configuration-assistant.md),
+[editable template](examples/machine.toml) and
+[future personal-settings recovery design](docs/personal-settings.md).
 
 ## Public modules
 
-This flake exports `nixosModules.office`, `nixosModules.legacy-bios`,
-`homeManagerModules.office`, and `nixosConfigurations.office-example`.
+This flake exports `nixosModules.office`, `nixosModules.disk` (BIOS or UEFI),
+`nixosModules.legacy-bios` (compatibility wrapper), `homeManagerModules.office`,
+`lib.machineModule file`, `apps.configure`, and `nixosConfigurations.office-example`.
 The example has locked accounts and a placeholder disk: **do not install it**.
-The office module includes Home Manager and sops-nix. The BIOS module includes
-disko and requires `nix2office.diskDevice` to identify the whole internal disk.
+The office module includes Home Manager and sops-nix. Both disk modules include
+disko and require `nix2office.diskDevice` to identify the whole internal disk.
 The example targets x86_64; the Bulgarian LibreOffice language pack is x86_64.
 
-`office` is an ordinary desktop user; `admin` has password-protected sudo.
+The selected desktop login (default `office`) is an ordinary user; `admin` has
+password-protected sudo.
 Root is locked, automatic graphical login is disabled, and SSH is enabled only
 when `nix2office.adminAuthorizedKeys` is populated. The firewall permits SSH
 only from the explicitly configured IPv4 `nix2office.adminNetwork` CIDR.
@@ -54,24 +76,26 @@ SANE/airscan; device-specific compatibility still requires a real device test.
 ## Create a private deployment
 
 First commit the public source. The initializer pins the deployment to that
-local Git revision; it never points at an uncommitted working tree.
+local Git revision; it never points at an uncommitted working tree. Use the
+menus above, or copy and edit `examples/machine.toml` in a private location:
 
 ```sh
-nix develop
-python3 scripts/init-deployment.py \
-  --hostname office-test \
-  --disk /dev/disk/by-id/ata-YOUR_INTERNAL_SSD \
-  --admin-network 192.168.1.0/24 \
-  --admin-key ~/.ssh/YOUR_PUBLIC_KEY.pub
+nix run .#configure -- --config /private/path/machine.toml --check
+nix run .#configure -- --config /private/path/machine.toml
 nix flake lock ./.deployment
-git -C .deployment add flake.lock
+git -C .deployment add machine.toml flake.lock
 ```
+
+The explicit `scripts/init-deployment.py` accepts the same `--config` under
+`nix develop`. Its original `--hostname`, `--disk`, `--admin-network` and
+`--admin-key` arguments remain supported with the default office account.
 
 The ignored `.deployment/` is a separate local Git repository. Its tracked
 files contain the host configuration, encrypted SOPS hashes, public recipients,
 and pinned inputs. Keys and generated passwords are mode 0600, ignored, and
-never printed by the initializer. Read `.deployment/credentials.json` locally
-to obtain the first login passwords. The host and operator each have an age
+never printed by the initializer. Hidden entered passwords are not saved as
+plaintext. If you selected generation, read `.deployment/credentials.json`
+locally to obtain the first login passwords. The host and operator each have an age
 identity under `.deployment/keys/`; the operator identity permits future edits:
 
 ```sh
@@ -90,12 +114,14 @@ decryption keys and must not build a source tree containing ignored secrets.
 
 ## Evaluate and build
 
+Replace `office-pc` with your TOML hostname (and `.deployment` with your output).
+
 ```sh
-nix fmt -- --check flake.nix modules/*.nix home/*.nix packages/*.nix examples/*.nix
-nix eval ./.deployment#nixosConfigurations.office-test.config.system.build.toplevel.drvPath
+nix fmt -- --check flake.nix modules/*.nix home/*.nix lib/*.nix packages/*.nix examples/*.nix
+nix eval ./.deployment#nixosConfigurations.office-pc.config.system.build.toplevel.drvPath
 nix build --option builders '' \
-  ./.deployment#nixosConfigurations.office-test.config.system.build.toplevel \
-  ./.deployment#nixosConfigurations.office-test.config.system.build.diskoScript \
+  ./.deployment#nixosConfigurations.office-pc.config.system.build.toplevel \
+  ./.deployment#nixosConfigurations.office-pc.config.system.build.diskoScript \
   --out-link .deployment/result
 ```
 
@@ -112,8 +138,9 @@ is seeded only for a new user profile, preserving later user preferences.
 
 ## Installation from a running rescue USB
 
-**The BIOS disk layout destroys the selected internal disk.** It creates GPT,
-a 1 MiB BIOS boot partition, 4 GiB swap and an ext4 root. zram uses 50% of RAM
+**Installation destroys the selected internal disk.** Both layouts use GPT,
+4 GiB swap and an ext4 root. BIOS adds a 1 MiB boot partition and GRUB; UEFI
+adds a 512 MiB FAT ESP and systemd-boot. Boot the rescue USB in the same mode. zram uses 50% of RAM
 at higher priority than disk swap. No backup is performed by this project.
 
 1. Verify the rescue host key, disk ID/model/capacity and that the selected disk
@@ -129,7 +156,8 @@ at higher priority than disk swap. No backup is performed by this project.
    and mode 0600, using the verified SSH connection. This is a runtime file,
    never a Nix input. Verify the closure in the `/mnt` store.
 5. Run `nixos-install --root /mnt --system SYSTEM_STORE_PATH --no-root-password`
-   from the live system, install GRUB, then reboot into the internal SSD.
+   from the live system, install the configured bootloader, then reboot into the
+   internal SSD.
 
 Validate these exact store options against the running rescue Nix version.
 Avoid nixos-anywhere kexec or target-side evaluation on low-memory machines.
@@ -137,7 +165,8 @@ Retain generated credentials and the operator identity securely outside Git.
 
 The included installer automates these steps through an already established,
 host-key-verified SSH control master. It verifies that the built disk ID matches
-the requested disk and refuses USB or mounted disks. Without `--execute`, it
+the requested disk and refuses USB or mounted disks. For assistant-created
+deployments it also checks the rescue boot mode against `machine.toml`. Without `--execute`, it
 only checks preconditions. Use the same target/user as the existing master:
 
 ```sh
@@ -162,8 +191,17 @@ No extended test suite or machine backup is required for the experimental host.
 ## Updates
 
 Update the public inputs explicitly, evaluate and build, and commit the tested
-source. Update the private flake's `nix2office` URL to the new immutable revision,
-then run `nix flake update --flake .deployment nix2office` and rebuild.
+source. Repin an assistant-created deployment with:
+
+```sh
+nix run .#configure -- --config .deployment/machine.toml --output .deployment --update
+nix flake update --flake .deployment nix2office
+```
+
+Alternatively, edit the private flake's `nix2office` URL to the new immutable
+revision before updating that input and rebuilding.
+Direct edits to `machine.toml` are consumed at the next rebuild; no regeneration
+is needed. Changing an installed login name needs a separate migration.
 Keep `system.stateVersion` and `home.stateVersion` at their installation value.
 System upgrades and reboot are manual. Previous boot generations remain
 available; selecting one does not recover erased data or rotate old credentials.
@@ -171,5 +209,12 @@ available; selecting one does not recover erased data or rotate old credentials.
 Before publication inspect `git ls-files` and scan tracked content for private
 keys, password hashes, addresses and host identifiers. Only the generic public
 repository belongs on GitHub; `.deployment/` has no public remote.
+
+For a focused helper check on the build machine:
+
+```sh
+nix develop --option builders '' -c python3 -m unittest discover -s tests -v
+nix eval --impure --json --expr 'import ./tests/evaluate.nix { root = toString ./.; }'
+```
 
 MIT licensed. Application packages retain their own licenses.

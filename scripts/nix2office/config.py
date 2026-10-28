@@ -1,0 +1,175 @@
+"""The versioned, secret-free machine.toml schema."""
+import base64
+import copy
+import ipaddress
+import json
+import re
+import struct
+import tomllib
+from pathlib import Path
+
+
+class ConfigError(ValueError):
+    pass
+
+
+DEFAULTS = {
+    "version": 1,
+    "hostname": "office-pc",
+    "disk": "",
+    "boot_mode": "bios",
+    "profile": "light",
+    "boot_splash": True,
+    "user": {"name": "office", "full_name": "Офис", "email": ""},
+    "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True},
+    "keyboard": {"bulgarian": "phonetic"},
+    "sharing": {"mode": "client", "workgroup": "WORKGROUP", "folder": "Shared", "network": "192.0.2.0/24", "read_only": False},
+    "vpn": {"wireguard": True, "tailscale": False, "zerotier": False, "zerotier_networks": []},
+    "admin": {"network": "192.0.2.0/24", "ssh_public_key": ""},
+    "hardware": {"cpu": "", "cpu_vendor": "unknown", "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": []},
+}
+BROWSERS = ("firefox-esr", "chromium", "brave", "google-chrome")
+OFFICES = ("libreoffice", "onlyoffice", "none")
+PDF_EDITORS = ("none", "pdfarranger", "xournalpp", "both")
+GPU_MODULES = ("i915", "xe", "amdgpu", "nouveau")
+RESERVED_USERS = {
+    "root", "admin", "nixos", "nobody", "lightdm", "daemon", "bin", "sys", "sync",
+    "games", "man", "lp", "mail", "news", "uucp", "proxy", "www-data", "backup",
+    "list", "irc", "gnats", "messagebus", "polkituser", "sshd", "ntp", "chrony",
+    "dbus", "avahi", "cups", "rpc",
+}
+
+
+def text(value, field, limit=512):
+    if not isinstance(value, str) or len(value) > limit or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise ConfigError(f"{field}: expected text without control characters (up to {limit} characters).")
+    return value
+
+
+def pattern(value, field, regex):
+    text(value, field)
+    if not re.fullmatch(regex, value):
+        raise ConfigError(f"{field}: invalid format.")
+
+
+def validate_public_key(value):
+    text(value, "admin.ssh_public_key", 16384)
+    if not value:
+        return
+    parts = value.split()
+    supported = {"ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+                 "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com"}
+    try:
+        if len(parts) < 2 or parts[0] not in supported:
+            raise ValueError
+        blob = base64.b64decode(parts[1], validate=True)
+        length = struct.unpack(">I", blob[:4])[0]
+        if blob[4:4 + length].decode("ascii") != parts[0] or len(blob) <= 4 + length:
+            raise ValueError
+    except (ValueError, UnicodeError, struct.error):
+        raise ConfigError("admin.ssh_public_key: expected one OpenSSH public key, never a private key.") from None
+
+
+def validate_machine(raw):
+    """Validate before any key generation, file creation or Nix evaluation."""
+    if not isinstance(raw, dict):
+        raise ConfigError("Expected a TOML document.")
+    unknown = set(raw) - set(DEFAULTS)
+    if unknown:
+        raise ConfigError("Unknown top-level field(s): " + ", ".join(sorted(unknown)) + ". Secrets do not belong in machine.toml.")
+    m = copy.deepcopy(DEFAULTS)
+    if raw.get("profile") == "standard":
+        m["apps"]["pdf_editor"] = "both"
+    for key, value in raw.items():
+        if isinstance(DEFAULTS[key], dict):
+            if not isinstance(value, dict):
+                raise ConfigError(f"{key}: expected a table.")
+            unknown = set(value) - set(DEFAULTS[key])
+            if unknown:
+                raise ConfigError(f"Unknown {key} field(s): " + ", ".join(sorted(unknown)) + ". No passwords or private keys are accepted.")
+            m[key].update(value)
+        else:
+            m[key] = value
+    for key in ("hostname", "disk", "boot_mode", "profile"):
+        text(m[key], key)
+    if type(m["version"]) is not int or m["version"] != 1:
+        raise ConfigError("Only machine.toml version = 1 is supported.")
+    pattern(m["hostname"], "hostname", r"[a-z][a-z0-9-]{0,61}[a-z0-9]|[a-z]")
+    pattern(m["disk"], "disk", r"/dev/disk/by-id/[A-Za-z0-9_.:+-]+")
+    if Path(m["disk"]).name in {".", ".."} or re.search(r"-part[0-9]+$", m["disk"]):
+        raise ConfigError("disk: select a whole disk by-id, not a partition.")
+    for field, choices in (("boot_mode", ("bios", "uefi")), ("profile", ("light", "standard"))):
+        if m[field] not in choices:
+            raise ConfigError(f"{field}: choose from {', '.join(choices)}.")
+    user = m["user"]
+    pattern(user["name"], "user.name", r"[a-z_][a-z0-9_-]{0,30}")
+    if user["name"] in RESERVED_USERS or user["name"].startswith(("nixbld", "systemd-")):
+        raise ConfigError("user.name: choose a separate desktop account, not a reserved system/admin name.")
+    text(user["full_name"], "user.full_name", 128)
+    if not user["full_name"].strip() or any(c in user["full_name"] for c in ":,"):
+        raise ConfigError("user.full_name: enter a displayed name without GECOS separators (: or comma).")
+    text(user["email"], "user.email", 254)
+    if user["email"] and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", user["email"]):
+        raise ConfigError("user.email: enter an e-mail address, or leave it empty.")
+    for key, choices in (("browser", BROWSERS), ("office", OFFICES), ("pdf_editor", PDF_EDITORS)):
+        if m["apps"][key] not in choices:
+            raise ConfigError(f"apps.{key}: choose from {', '.join(choices)}.")
+    if m["keyboard"]["bulgarian"] not in ("phonetic", "bds"):
+        raise ConfigError("keyboard.bulgarian: choose phonetic or bds.")
+    sharing = m["sharing"]
+    if sharing["mode"] not in ("client", "both"):
+        raise ConfigError("sharing.mode: choose client or both.")
+    pattern(sharing["workgroup"], "sharing.workgroup", r"[A-Za-z0-9][A-Za-z0-9_-]{0,14}")
+    pattern(sharing["folder"], "sharing.folder", r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+    if sharing["folder"].lower() in {"global", "homes", "printers"}:
+        raise ConfigError("sharing.folder: choose a folder name other than a reserved Samba section.")
+    for field, value in (("sharing.network", sharing["network"]), ("admin.network", m["admin"]["network"])):
+        text(value, field)
+        try:
+            net = ipaddress.IPv4Network(value)
+            if net.prefixlen == 0:
+                raise ValueError
+        except ValueError:
+            raise ConfigError(f"{field}: expected a specific IPv4 network CIDR, not every address.") from None
+    validate_public_key(m["admin"]["ssh_public_key"])
+    for field, value in (("boot_splash", m["boot_splash"]), ("apps.nextcloud", m["apps"]["nextcloud"]),
+                         ("sharing.read_only", sharing["read_only"]),
+                         *(("vpn." + k, m["vpn"][k]) for k in ("wireguard", "tailscale", "zerotier"))):
+        if type(value) is not bool:
+            raise ConfigError(f"{field}: expected true or false.")
+    networks = m["vpn"]["zerotier_networks"]
+    if not isinstance(networks, list) or any(not isinstance(v, str) or not re.fullmatch(r"[0-9a-fA-F]{16}", v) for v in networks):
+        raise ConfigError("vpn.zerotier_networks: expected a list of 16-digit hexadecimal network IDs.")
+    if networks and not m["vpn"]["zerotier"]:
+        raise ConfigError("Enable vpn.zerotier before supplying its network IDs.")
+    h = m["hardware"]
+    text(h["cpu"], "hardware.cpu")
+    if h["cpu_vendor"] not in ("intel", "amd", "unknown") or h["boot_mode"] not in ("bios", "uefi", "unknown"):
+        raise ConfigError("hardware: invalid CPU vendor or detected boot mode.")
+    for key in ("memory_mib", "threads"):
+        if type(h[key]) is not int or h[key] < 0:
+            raise ConfigError(f"hardware.{key}: expected a non-negative integer.")
+    if not isinstance(h["initrd_modules"], list) or any(v not in GPU_MODULES for v in h["initrd_modules"]):
+        raise ConfigError("hardware.initrd_modules: unsupported early graphics driver.")
+    return m
+
+
+def load_machine(path):
+    try:
+        return validate_machine(tomllib.loads(Path(path).read_text(encoding="utf-8")))
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        # TOML parser diagnostics can include the offending line, possibly a secret.
+        raise ConfigError(f"Cannot read machine.toml ({type(e).__name__}); check its syntax and location.") from None
+
+
+def dump_machine(machine):
+    m = validate_machine(machine)
+    lines = ["# Nix2office configuration. Never put passwords, tokens or private keys here."]
+    for key, value in m.items():
+        if not isinstance(value, dict):
+            lines.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
+    for section, values in m.items():
+        if isinstance(values, dict):
+            lines.extend(("", f"[{section}]"))
+            lines.extend(f"{key} = {json.dumps(value, ensure_ascii=False)}" for key, value in values.items())
+    return "\n".join(lines) + "\n"

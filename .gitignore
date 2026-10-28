@@ -4,3 +4,5 @@ result-*
 .direnv/
 *.qcow2
 *.log
+__pycache__/
+*.pyc
