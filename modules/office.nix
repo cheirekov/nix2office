@@ -83,6 +83,15 @@ in
         "~a11y"
         "~power"
       ];
+      # LightDM's fallback uses a tab before variants; libxklavier uses an underscore.
+      displayManager.lightdm.greeters.gtk.extraConfig = "keyboard-layouts=us;bg\tphonetic;bg_phonetic";
+      # The greeter may replace the server keymap when a password layout is selected.
+      displayManager.sessionCommands = ''
+        ${lib.getExe pkgs.setxkbmap} \
+          -layout ${lib.escapeShellArg config.services.xserver.xkb.layout} \
+          -variant ${lib.escapeShellArg config.services.xserver.xkb.variant} \
+          -option ${lib.escapeShellArg config.services.xserver.xkb.options}
+      '';
       excludePackages = [ pkgs.xterm ];
     };
     services.displayManager.defaultSession = "xfce";
