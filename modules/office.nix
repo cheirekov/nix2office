@@ -155,6 +155,13 @@ in
     services.gvfs.enable = true;
     services.tumbler.enable = true;
     services.fstrim.enable = true;
+    programs.firefox = {
+      enable = true;
+      package = pkgs.firefox-esr;
+      languagePacks = [ "bg" ];
+      preferences."intl.locale.requested" = "bg";
+      preferencesStatus = "default";
+    };
     zramSwap = {
       enable = true;
       memoryPercent = 50;
@@ -169,7 +176,6 @@ in
       noto-fonts-color-emoji
     ];
     environment.systemPackages = with pkgs; [
-      firefox-esr
       libreofficeBg
       atril
       simple-scan
