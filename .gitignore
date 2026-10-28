@@ -1,0 +1,6 @@
+.deployment/
+result
+result-*
+.direnv/
+*.qcow2
+*.log
