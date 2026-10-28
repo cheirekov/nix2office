@@ -15,6 +15,9 @@ class Cancelled(Exception):
 def load_inventory(path):
     try:
         value = json.loads(Path(path).read_text(encoding="utf-8"))
+        required = ("architecture", "cpu", "cpu_vendor", "memory_mib", "threads", "boot_mode", "initrd_modules", "disks")
+        if not isinstance(value, dict) or not all(key in value for key in required):
+            raise ValueError
         # Validate facts before using them as defaults or menu entries.
         validate_machine({"disk": "/dev/disk/by-id/ata-EXAMPLE", "hardware": machine_hardware(value)})
         if not isinstance(value["architecture"], str) or not isinstance(value["disks"], list):

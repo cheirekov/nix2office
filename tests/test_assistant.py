@@ -138,6 +138,10 @@ class HardwareTests(unittest.TestCase):
             inv = parse_probe(inventory_text())
             p.write_text(json.dumps(inv))
             self.assertEqual(load_inventory(p), inv)
+            for malformed in ([], {k: v for k, v in inv.items() if k != "cpu"}):
+                p.write_text(json.dumps(malformed))
+                with self.assertRaises(ConfigError):
+                    load_inventory(p)
             inv["disks"][0]["by_id"] = ["/dev/sda"]
             p.write_text(json.dumps(inv))
             with self.assertRaises(ConfigError):
