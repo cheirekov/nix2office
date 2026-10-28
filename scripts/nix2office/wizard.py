@@ -120,7 +120,17 @@ def wizard(args):
         m["disk"] = select("Вътрешен диск (сега НЕ се форматира):", choices, choices[0][0])
     else:
         m["disk"] = field("Цял вътрешен диск /dev/disk/by-id/... (без USB/partition):", key="disk")
+    probed_boot = inventory["boot_mode"] if inventory else None
     m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
+    if probed_boot in ("bios", "uefi") and m["boot_mode"] != probed_boot:
+        print(f"\nНа {inventory['source']} откритият режим е {probed_boot}, а избраният е {m['boot_mode']}.")
+        if m["boot_mode"] == "uefi":
+            print("Инсталация на UEFI от Legacy BIOS сесия не довършва: bootctl отказва да запише EFI променливи, а това настъпва след форматирането на диска.")
+        else:
+            print("Legacy BIOS запис от UEFI сесия става, но машината трябва да го зареди през CSM.")
+        if not ask(q.confirm(f"Rescue средата заредена ли е през {m['boot_mode']}?", default=False)):
+            m["boot_mode"] = probed_boot
+            print(f"Режимът на зареждане остава {probed_boot}, както го откри probe-ът.")
     m["hostname"] = field("Име на компютъра:", m["hostname"], key="hostname")
     m["user"]["name"] = field("Потребителско име за вход (латиница):", "maria", "user", "name")
     m["user"]["full_name"] = field("Име за показване (може на кирилица):", "Мария Димитрова", "user", "full_name")
