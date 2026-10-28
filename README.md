@@ -9,6 +9,8 @@ and scanning, and the Nextcloud desktop sync client.
 
 - The taskbar shows the current keyboard language as text. Click it or press
   **Alt+Shift** to switch between English and Bulgarian phonetic input.
+  The LightDM login screen also has a keyboard layout selector, so passwords
+  can be entered with the appropriate layout before starting the desktop.
 - Open **Settings → Звук** (Sound), or the sound settings from the taskbar volume
   icon. In **Configuration**, choose an available analog or HDMI profile; in
   **Output Devices**, choose the output and volume. WirePlumber remembers the

@@ -73,6 +73,16 @@ in
       };
       desktopManager.xfce.enable = true;
       displayManager.lightdm.enable = true;
+      displayManager.lightdm.greeters.gtk.indicators = [
+        "~host"
+        "~spacer"
+        "~clock"
+        "~spacer"
+        "~layout"
+        "~session"
+        "~a11y"
+        "~power"
+      ];
       excludePackages = [ pkgs.xterm ];
     };
     services.displayManager.defaultSession = "xfce";
