@@ -174,8 +174,8 @@ in
       atril
       simple-scan
       nextcloud-client
-      xfce.xfce4-whiskermenu-plugin
-      xfce.thunar-archive-plugin
+      xfce4-whiskermenu-plugin
+      thunar-archive-plugin
       xarchiver
       hunspell
       hunspellDicts.en_US
