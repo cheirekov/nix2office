@@ -28,6 +28,12 @@ let
     Exec=${exec}
     Terminal=false
   '';
+  desktopLaunchers = {
+    browser = desktopShortcut "Интернет" "firefox-esr" "firefox-esr";
+    writer = desktopShortcut "Текстови документи" "libreoffice-writer" "libreoffice --writer";
+    calc = desktopShortcut "Електронни таблици" "libreoffice-calc" "libreoffice --calc";
+    nextcloud = desktopShortcut "Nextcloud" "Nextcloud" "nextcloud";
+  };
 in
 {
   home.stateVersion = "26.05";
@@ -107,6 +113,7 @@ in
         13
         14
         15
+        18
         16
         17
       ];
@@ -123,12 +130,17 @@ in
       "plugins/plugin-12/style" = (uint 0);
       "plugins/plugin-13" = "systray";
       "plugins/plugin-14" = "pulseaudio";
+      "plugins/plugin-14/mixer-command" = "pavucontrol";
       "plugins/plugin-15" = "notification-plugin";
       "plugins/plugin-16" = "clock";
       "plugins/plugin-16/digital-layout" = (uint 3);
       "plugins/plugin-16/digital-time-format" = "%H:%M";
       "plugins/plugin-16/digital-date-format" = "%d.%m.%Y";
       "plugins/plugin-17" = "showdesktop";
+      "plugins/plugin-18" = "xkb";
+      "plugins/plugin-18/display-type" = uint 1;
+      "plugins/plugin-18/display-name" = uint 1;
+      "plugins/plugin-18/group-policy" = uint 0;
     };
     xfce4-keyboard-shortcuts = {
       "commands/custom/Super_L" = "xfce4-popup-whiskermenu";
@@ -146,6 +158,32 @@ in
     Icon=Nextcloud
     Terminal=false
   '';
+  # XFCE resolves URLs through Exo helpers as well as MIME associations.
+  xdg.dataFile."xfce4/helpers/firefox-esr.desktop".text = ''
+    [Desktop Entry]
+    Version=1.0
+    Type=X-XFCE-Helper
+    Name=Firefox ESR
+    Icon=firefox-esr
+    X-XFCE-Category=WebBrowser
+    X-XFCE-Binaries=firefox-esr;
+    X-XFCE-Commands=%B;
+    X-XFCE-CommandsWithParameter=%B "%s";
+  '';
+  xdg.desktopEntries.sound-settings = {
+    name = "Звук";
+    genericName = "Настройки на звука";
+    exec = "pavucontrol";
+    icon = "multimedia-volume-control";
+    categories = [
+      "Settings"
+      "HardwareSettings"
+    ];
+    settings = {
+      "X-XFCE-SettingsDialog" = "true";
+      "X-XFCE-SettingsName" = "Sound";
+    };
+  };
   xdg.mimeApps = {
     enable = true;
     defaultApplications = {
@@ -158,24 +196,33 @@ in
       "application/vnd.openxmlformats-officedocument.presentationml.presentation" = [ "impress.desktop" ];
     };
   };
-  home.file = {
-    "Desktop/browser.desktop" = {
-      executable = true;
-      text = desktopShortcut "Интернет" "firefox-esr" "firefox-esr";
-    };
-    "Desktop/writer.desktop" = {
-      executable = true;
-      text = desktopShortcut "Текстови документи" "libreoffice-writer" "libreoffice --writer";
-    };
-    "Desktop/calc.desktop" = {
-      executable = true;
-      text = desktopShortcut "Електронни таблици" "libreoffice-calc" "libreoffice --calc";
-    };
-    "Desktop/nextcloud.desktop" = {
-      executable = true;
-      text = desktopShortcut "Nextcloud" "Nextcloud" "nextcloud";
-    };
-  };
+  # Copies are writable user files: store symlinks display padlock overlays.
+  home.activation.desktopLaunchers = lib.hm.dag.entryAfter [ "linkGeneration" ] (
+    lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (name: contents: ''
+        if [ -L "$HOME/Desktop/${name}.desktop" ]; then
+          run rm "$HOME/Desktop/${name}.desktop"
+        fi
+        run install -Dm755 ${pkgs.writeText "${name}.desktop" contents} "$HOME/Desktop/${name}.desktop"
+      '') desktopLaunchers
+    )
+  );
+  home.activation.defaultBrowserHelper = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    helpers="$HOME/.config/xfce4/helpers.rc"
+    run mkdir -p "$(dirname "$helpers")"
+    if [ ! -e "$helpers" ]; then
+      run touch "$helpers"
+    fi
+    if ! ${pkgs.gnugrep}/bin/grep -q '^WebBrowser=' "$helpers"; then
+      run ${pkgs.bash}/bin/bash -c 'printf "WebBrowser=firefox-esr\n" >> "$1"' -- "$helpers"
+    elif ${pkgs.gnugrep}/bin/grep -q '^WebBrowser=firefox$' "$helpers" || {
+      ${pkgs.gnugrep}/bin/grep -q '^WebBrowser=custom-WebBrowser$' "$helpers" &&
+      ${pkgs.gnugrep}/bin/grep -qE '^X-XFCE-Commands=firefox(;|$)' "$HOME/.local/share/xfce4/helpers/custom-WebBrowser.desktop"
+    }; then
+      # Repair the original missing Firefox ESR helper, preserving other helpers.
+      run ${pkgs.gnused}/bin/sed -i 's/^WebBrowser=.*/WebBrowser=firefox-esr/' "$helpers"
+    fi
+  '';
   home.activation.seedLibreOffice = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     target="$HOME/.config/libreoffice/4/user/registrymodifications.xcu"
     if [ ! -e "$target" ]; then

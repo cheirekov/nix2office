@@ -10,6 +10,11 @@ let
 in
 {
   options.nix2office = {
+    bootSplash.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Show a Plymouth spinner instead of verbose boot messages.";
+    };
     adminAuthorizedKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
@@ -34,6 +39,16 @@ in
 
   config = {
     system.stateVersion = lib.mkDefault "26.05";
+    boot.plymouth = {
+      enable = cfg.bootSplash.enable;
+      theme = lib.mkDefault "spinner";
+    };
+    boot.kernelParams = lib.optionals cfg.bootSplash.enable [
+      "quiet"
+      "udev.log_level=3"
+    ];
+    boot.consoleLogLevel = lib.mkIf cfg.bootSplash.enable 3;
+    boot.initrd.verbose = lib.mkIf cfg.bootSplash.enable false;
     nix.settings.experimental-features = [
       "nix-command"
       "flakes"
@@ -180,7 +195,9 @@ in
       atril
       simple-scan
       nextcloud-client
+      pavucontrol
       xfce4-whiskermenu-plugin
+      xfce4-xkb-plugin
       thunar-archive-plugin
       xarchiver
       hunspell
