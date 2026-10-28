@@ -88,8 +88,8 @@ at higher priority than disk swap. No backup is performed by this project.
 
 1. Verify the rescue host key, disk ID/model/capacity and that the selected disk
    is not the rescue USB. Keep SSH access to the live system available.
-2. Transfer the small `result-1` closure to the rescue system and run its
-   `bin/disko` script as root. It formats and mounts the target at `/mnt`.
+2. Transfer the small `result-1` closure to the rescue system and execute that
+   script as root. It formats and mounts the target at `/mnt`.
 3. Stream the built system closure directly to the target's `/mnt` store:
    `nix-store --store /mnt --import`. Do not first import the system into the
    RAM-backed live store. `nix-store --export` with its full requisites on the
@@ -103,6 +103,22 @@ at higher priority than disk swap. No backup is performed by this project.
 Validate these exact store options against the running rescue Nix version.
 Avoid nixos-anywhere kexec or target-side evaluation on low-memory machines.
 Retain generated credentials and the operator identity securely outside Git.
+
+The included installer automates these steps through an already established,
+host-key-verified SSH control master. It verifies that the built disk ID matches
+the requested disk and refuses USB or mounted disks. Without `--execute`, it
+only checks preconditions. Use the same target/user as the existing master:
+
+```sh
+python3 scripts/install-built.py --target nixos@RESCUE_IP \
+  --socket /path/to/rescue-control.sock \
+  --disk /dev/disk/by-id/ata-YOUR_INTERNAL_SSD
+# Repeat with --execute --reboot to erase, install and reboot.
+```
+
+The installed SSH host public key is captured over the trusted rescue session
+in `.deployment/known_hosts`; use that file for the first admin connection.
+The old live-system key in your normal known_hosts is not removed or bypassed.
 
 After reboot, check graphical login, administrative SSH, browser, Writer/Calc,
 Nextcloud startup and memory pressure. Configure Nextcloud and select folders
