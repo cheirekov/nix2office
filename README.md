@@ -89,7 +89,8 @@ at higher priority than disk swap. No backup is performed by this project.
 1. Verify the rescue host key, disk ID/model/capacity and that the selected disk
    is not the rescue USB. Keep SSH access to the live system available.
 2. Transfer the small `result-1` closure to the rescue system and execute that
-   script as root. It formats and mounts the target at `/mnt`.
+   script as root. It formats and mounts the target at `/mnt`. Enable the new
+   swap partition for the remaining installation on low-memory machines.
 3. Stream the built system closure directly to the target's `/mnt` store:
    `nix-store --store /mnt --import`. Do not first import the system into the
    RAM-backed live store. `nix-store --export` with its full requisites on the

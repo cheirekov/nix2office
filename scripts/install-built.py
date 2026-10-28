@@ -68,6 +68,7 @@ remote("sudo -n " + quote(disko))
 remote("set -eu; d=$(readlink -f " + quote(args.disk) + "); "
        "s=$(findmnt -n -o SOURCE /mnt); "
        "test \"$(lsblk -dn -o PKNAME \"$s\")\" = \"$(basename \"$d\")\"")
+remote("sudo -n swapon /dev/disk/by-partlabel/disk-system-swap")
 print("Streaming the system closure directly to the SSD store", flush=True)
 transfer(system, "/mnt")
 remote("sudo -n install -Dm600 /dev/stdin /mnt/var/lib/sops-nix/key.txt",
