@@ -161,7 +161,7 @@ in
   home.file = {
     "Desktop/browser.desktop" = {
       executable = true;
-      text = desktopShortcut "Интернет" "firefox" "firefox";
+      text = desktopShortcut "Интернет" "firefox-esr" "firefox-esr";
     };
     "Desktop/writer.desktop" = {
       executable = true;
