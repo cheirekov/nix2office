@@ -51,9 +51,12 @@ if not args.execute:
 def transfer(output, target_store):
     paths = subprocess.check_output(["nix-store", "-qR", str(output)], text=True).splitlines()
     # A partial installation or another closure may already supply most paths.
-    missing = remote("sudo -n nix-store --store " + quote(target_store) +
-                     " --check-validity --print-invalid " + " ".join(map(quote, paths)),
-                     capture_output=True, text=True).stdout.splitlines()
+    missing = []
+    for start in range(0, len(paths), 128):
+        missing.extend(remote("sudo -n nix-store --store " + quote(target_store) +
+                              " --check-validity --print-invalid " +
+                              " ".join(map(quote, paths[start:start + 128])),
+                              capture_output=True, text=True).stdout.splitlines())
     if not missing:
         return
     exporter = subprocess.Popen(["nix-store", "--export", *missing], stdout=subprocess.PIPE)

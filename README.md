@@ -117,6 +117,9 @@ python3 scripts/install-built.py --target nixos@RESCUE_IP \
 # Repeat with --execute --reboot to erase, install and reboot.
 ```
 
+After an interrupted transfer, `--resume --execute` reuses the verified `/mnt`
+filesystem without formatting and transfers only missing store paths.
+
 The installed SSH host public key is captured over the trusted rescue session
 in `.deployment/known_hosts`; use that file for the first admin connection.
 The old live-system key in your normal known_hosts is not removed or bypassed.
