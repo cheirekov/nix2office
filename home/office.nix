@@ -178,11 +178,9 @@ in
     categories = [
       "Settings"
       "HardwareSettings"
+      "X-XFCE-SettingsDialog"
+      "X-XFCE-HardwareSettings"
     ];
-    settings = {
-      "X-XFCE-SettingsDialog" = "true";
-      "X-XFCE-SettingsName" = "Sound";
-    };
   };
   xdg.mimeApps = {
     enable = true;
