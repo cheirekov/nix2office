@@ -170,7 +170,7 @@ in
     X-XFCE-Commands=%B;
     X-XFCE-CommandsWithParameter=%B "%s";
   '';
-  xdg.desktopEntries.sound-settings = {
+  xdg.desktopEntries."org.pulseaudio.pavucontrol" = {
     name = "Звук";
     genericName = "Настройки на звука";
     exec = "pavucontrol";

@@ -5,6 +5,34 @@ The default profile uses Bulgarian, XFCE/Xorg, a bottom taskbar and application
 menu, Firefox ESR, LibreOffice with a tabbed toolbar, PDF tools, network printing
 and scanning, and the Nextcloud desktop sync client.
 
+## Everyday desktop controls
+
+- The taskbar shows the current keyboard language as text. Click it or press
+  **Alt+Shift** to switch between English and Bulgarian phonetic input.
+- Open **Settings → Звук** (Sound), or the sound settings from the taskbar volume
+  icon. In **Configuration**, choose an available analog or HDMI profile; in
+  **Output Devices**, choose the output and volume. WirePlumber remembers the
+  selection. A connected display must support audio for HDMI playback.
+- Firefox ESR is registered with both the desktop's browser helper and its URL
+  associations, including links opened by Nextcloud. The migration repairs the
+  old `firefox` helper; unrelated user browser choices are preserved.
+- Application shortcuts are executable, user-owned desktop files. Home Manager
+  refreshes the supplied shortcuts on activation; their contents are managed by
+  this profile.
+- Plymouth's spinner hides most kernel messages during startup. Set
+  `nix2office.bootSplash.enable = false;` for text startup. If a machine needs an
+  early graphics driver for the splash, add it to that host's
+  `boot.initrd.kernelModules` (for example, `"i915"` for supported Intel graphics).
+
+Thunar includes SMB client support: use **Go → Open Location** and enter
+`smb://SERVER/SHARE`. This does not enable a file server on the office machine.
+Serving a folder to Windows requires a separate Samba configuration with the
+chosen workgroup, shared directory, user access and permitted network.
+
+For a proposed simpler setup workflow, see
+[the configuration assistant design](docs/configuration-assistant.md).
+That assistant is a proposal; the initializer below is the current interface.
+
 ## Public modules
 
 This flake exports `nixosModules.office`, `nixosModules.legacy-bios`,
