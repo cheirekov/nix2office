@@ -12,11 +12,12 @@ let
   officeDefaults = pkgs.writeText "libreoffice-defaults.xcu" ''
     <?xml version="1.0" encoding="UTF-8"?>
     <oor:items xmlns:oor="http://openoffice.org/2001/registry">
-      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Writer"><prop oor:name="Active" oor:op="fuse"><value>Tabbed</value></prop></item>
-      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Calc"><prop oor:name="Active" oor:op="fuse"><value>Tabbed</value></prop></item>
-      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Impress"><prop oor:name="Active" oor:op="fuse"><value>Tabbed</value></prop></item>
+      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Writer"><prop oor:name="Active" oor:op="fuse"><value>notebookbar.ui</value></prop></item>
+      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Calc"><prop oor:name="Active" oor:op="fuse"><value>notebookbar.ui</value></prop></item>
+      <item oor:path="/org.openoffice.Office.UI.ToolbarMode/Applications/Impress"><prop oor:name="Active" oor:op="fuse"><value>notebookbar.ui</value></prop></item>
       <item oor:path="/org.openoffice.Office.Linguistic/General"><prop oor:name="DefaultLocale" oor:op="fuse"><value>bg-BG</value></prop></item>
       <item oor:path="/org.openoffice.Office.Common/Misc"><prop oor:name="FirstRun" oor:op="fuse"><value>false</value></prop></item>
+      <item oor:path="/org.openoffice.Setup/Product"><prop oor:name="WhatsNew" oor:op="fuse"><value>false</value></prop></item>
     </oor:items>
   '';
   desktopShortcut = name: icon: exec: ''
@@ -179,6 +180,9 @@ in
     target="$HOME/.config/libreoffice/4/user/registrymodifications.xcu"
     if [ ! -e "$target" ]; then
       run install -Dm600 ${officeDefaults} "$target"
+    else
+      # Migrate the invalid mode identifier used by the initial office profile.
+      run ${pkgs.gnused}/bin/sed -i 's|<value>Tabbed</value>|<value>notebookbar.ui</value>|g' "$target"
     fi
   '';
 }
