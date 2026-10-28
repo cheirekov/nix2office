@@ -17,6 +17,7 @@ p.add_argument("--disk", required=True, help="Verified internal whole-disk by-id
 p.add_argument("--deployment", type=Path, default=Path(".deployment"))
 p.add_argument("--execute", action="store_true", help="Actually erase and install the selected disk")
 p.add_argument("--reboot", action="store_true")
+p.add_argument("--resume", action="store_true", help="Reuse the verified disk already mounted at /mnt; never format it")
 args = p.parse_args()
 deploy = args.deployment.resolve()
 system = (deploy / "result").resolve(strict=True)
@@ -38,7 +39,7 @@ def remote(command, **kwargs):
 remote("set -eu; d=" + quote(args.disk) + "; test -b \"$d\"; "
        "test \"$(lsblk -dn -o TYPE \"$d\")\" = disk; "
        "test \"$(lsblk -dn -o TRAN \"$d\")\" != usb; "
-       "if lsblk -nr -o MOUNTPOINTS \"$d\" | grep -q '[^[:space:]]'; then "
+       "if " + ("false" if args.resume else "lsblk -nr -o MOUNTPOINTS \"$d\" | grep -q '[^[:space:]]'") + "; then "
        "echo 'Refusing to format a mounted disk' >&2; exit 1; fi; "
        "lsblk -dn -o NAME,SIZE,MODEL,TRAN \"$d\"")
 print(f"Selected system: {system}\nSelected disk: {args.disk}", flush=True)
@@ -49,7 +50,13 @@ if not args.execute:
 
 def transfer(output, target_store):
     paths = subprocess.check_output(["nix-store", "-qR", str(output)], text=True).splitlines()
-    exporter = subprocess.Popen(["nix-store", "--export", *paths], stdout=subprocess.PIPE)
+    # A partial installation or another closure may already supply most paths.
+    missing = remote("sudo -n nix-store --store " + quote(target_store) +
+                     " --check-validity --print-invalid " + " ".join(map(quote, paths)),
+                     capture_output=True, text=True).stdout.splitlines()
+    if not missing:
+        return
+    exporter = subprocess.Popen(["nix-store", "--export", *missing], stdout=subprocess.PIPE)
     compressor = subprocess.Popen(["gzip", "-1"], stdin=exporter.stdout, stdout=subprocess.PIPE)
     exporter.stdout.close()
     importer = subprocess.Popen(ssh + [args.target,
@@ -61,14 +68,16 @@ def transfer(output, target_store):
         raise SystemExit(f"Closure transfer failed: {statuses}")
 
 
-print("Transferring disk tool to the live store", flush=True)
-transfer(disko, "/")
-print("Formatting the selected internal disk and mounting /mnt", flush=True)
-remote("sudo -n " + quote(disko))
+if not args.resume:
+    print("Transferring disk tool to the live store", flush=True)
+    transfer(disko, "/")
+    print("Formatting the selected internal disk and mounting /mnt", flush=True)
+    remote("sudo -n " + quote(disko))
 remote("set -eu; d=$(readlink -f " + quote(args.disk) + "); "
        "s=$(findmnt -n -o SOURCE /mnt); "
        "test \"$(lsblk -dn -o PKNAME \"$s\")\" = \"$(basename \"$d\")\"")
-remote("sudo -n swapon /dev/disk/by-partlabel/disk-system-swap")
+remote("s=$(readlink -f /dev/disk/by-partlabel/disk-system-swap); "
+       "swapon --noheadings --raw --show=NAME | grep -qxF \"$s\" || sudo -n swapon \"$s\"")
 print("Streaming the system closure directly to the SSD store", flush=True)
 transfer(system, "/mnt")
 remote("sudo -n install -Dm600 /dev/stdin /mnt/var/lib/sops-nix/key.txt",

@@ -93,12 +93,13 @@ in
     };
     xfce4-panel = {
       "configver" = 2;
-      "panels" = [ (uint 1) ];
+      "panels" = [ 1 ];
+      "panels/dark-mode" = false;
       "panels/panel-1/position" = "p=10;x=0;y=0";
       "panels/panel-1/position-locked" = true;
-      "panels/panel-1/length" = 100.0;
+      "panels/panel-1/length" = uint 100;
       "panels/panel-1/size" = (uint 40);
-      "panels/panel-1/plugin-ids" = map uint [
+      "panels/panel-1/plugin-ids" = [
         10
         11
         12
