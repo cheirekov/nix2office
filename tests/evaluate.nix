@@ -50,6 +50,8 @@ let
             ({ lib, ... }: {
               users.allowNoPasswordLogin = true; # Locked accounts in evaluation only.
               nix2office = {
+                adminNetwork = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
+                adminAuthorizedKeys = lib.mkForce [ "ssh-ed25519 AAAA evaluation-only" ];
                 devices.bluetooth = lib.mkForce variant.services;
                 devices.unfreeFirmware = lib.mkForce variant.services;
                 apps.artcraft = lib.mkForce variant.services;
@@ -82,6 +84,14 @@ let
     assert c.hardware.bluetooth.enable == variant.services;
     assert c.services.blueman.enable == variant.services;
     assert c.hardware.enableAllFirmware == variant.services;
+    assert c.services.openssh.enable;
+    assert !c.services.openssh.openFirewall;
+    assert !c.services.openssh.settings.PasswordAuthentication;
+    assert !c.services.openssh.settings.KbdInteractiveAuthentication;
+    assert c.services.openssh.settings.PermitRootLogin == "no";
+    assert lib.hasInfix "ip saddr ${c.nix2office.adminNetwork} tcp dport 22 accept"
+      c.networking.firewall.extraInputRules;
+    assert c.nix2office.sharing.network != "0.0.0.0/0";
     assert c.services.samba.enable == variant.services;
     assert c.services.tailscale.enable == variant.services;
     assert c.services.zerotierone.enable == variant.services;

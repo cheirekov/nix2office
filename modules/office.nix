@@ -50,7 +50,7 @@ in
     adminNetwork = lib.mkOption {
       type = lib.types.strMatching "[0-9.]+/[0-9]+";
       default = "192.0.2.0/24";
-      description = "Trusted IPv4 CIDR for administrative SSH. Set this in the deployment.";
+      description = "IPv4 source CIDR for administrative SSH; 0.0.0.0/0 allows every IPv4 source.";
     };
     officePasswordFile = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -67,8 +67,9 @@ in
   config = {
     assertions = [
       {
-        assertion = (import ../lib/valid-ipv4-cidr.nix lib) cfg.adminNetwork;
-        message = "Administrative access requires a specific IPv4 CIDR with prefix 1 through 32.";
+        assertion =
+          cfg.adminNetwork == "0.0.0.0/0" || (import ../lib/valid-ipv4-cidr.nix lib) cfg.adminNetwork;
+        message = "Administrative SSH requires an IPv4 CIDR (/1 through /32), or 0.0.0.0/0 for every IPv4 source.";
       }
       {
         assertion =

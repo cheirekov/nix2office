@@ -131,11 +131,16 @@ def validate_machine(raw):
     for field, value in (("sharing.network", sharing["network"]), ("admin.network", m["admin"]["network"])):
         text(value, field)
         try:
+            if not re.fullmatch(r"[0-9.]+/(0|[1-9][0-9]?)", value):
+                raise ValueError
             net = ipaddress.IPv4Network(value)
-            if net.prefixlen == 0:
+            if net.prefixlen == 0 and field == "sharing.network":
                 raise ValueError
         except ValueError:
-            raise ConfigError(f"{field}: expected a specific IPv4 network CIDR, not every address.") from None
+            hint = "192.168.1.0/24 or one IP /32"
+            if field == "admin.network":
+                hint += "; 0.0.0.0/0 allows every IPv4 source"
+            raise ConfigError(f"{field}: expected an explicit IPv4 CIDR, e.g. {hint}.") from None
     validate_public_key(m["admin"]["ssh_public_key"])
     for field, value in (("boot_splash", m["boot_splash"]), ("apps.nextcloud", m["apps"]["nextcloud"]), ("apps.artcraft", m["apps"]["artcraft"]),
                          ("sharing.read_only", sharing["read_only"]),

@@ -49,7 +49,9 @@ class SchemaTests(unittest.TestCase):
     def test_reject_bad_inputs_before_writes(self):
         cases = [("user", "password", "DO_NOT_ECHO"), ("user", "name", "admin"), ("user", "full_name", "Maria:root"),
                  ("sharing", "folder", "../Documents"), ("sharing", "folder", "global"), ("sharing", "network", "0.0.0.0/0"),
-                 ("admin", "network", "192.0.2.0/24; ACCEPT"), ("admin", "ssh_public_key", "-----BEGIN PRIVATE KEY----- DO_NOT_ECHO"),
+                 ("admin", "network", "192.0.2.0/24; ACCEPT"), ("admin", "network", "0.0.0.0"), ("admin", "network", "192.0.2.10"),
+                 ("admin", "network", "192.0.2.0/255.255.255.0"), ("admin", "network", "0.0.0.0/00"),
+                 ("sharing", "network", "192.0.2.0"), ("admin", "ssh_public_key", "-----BEGIN PRIVATE KEY----- DO_NOT_ECHO"),
                  ("apps", "nextcloud", "false"), ("vpn", "zerotier_networks", ["not-a-network"])]
         for section, key, value in cases:
             with self.subTest(section=section, key=key):
@@ -61,6 +63,15 @@ class SchemaTests(unittest.TestCase):
         for disk in ("/dev/sda", "/dev/disk/by-id/ata-EXAMPLE-part1", "/dev/disk/by-id/../sda"):
             with self.assertRaises(ConfigError):
                 validate_machine({"disk": disk})
+
+    def test_all_ipv4_allowed_for_admin_and_smb_remains_scoped(self):
+        m = machine()
+        m["admin"]["network"] = "0.0.0.0/0"
+        validated = validate_machine(m)
+        self.assertEqual(validated["admin"]["network"], "0.0.0.0/0")
+        self.assertEqual(validated["sharing"]["network"], m["sharing"]["network"])
+        m["admin"]["network"] = "203.0.113.10/32"
+        self.assertEqual(validate_machine(m)["admin"]["network"], "203.0.113.10/32")
 
     def test_public_key_and_interpolation_are_data(self):
         m = machine()

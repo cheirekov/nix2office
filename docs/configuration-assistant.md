@@ -130,7 +130,7 @@ The VPN menu selects installed clients/services, not credentials:
 
 Tailscale/ZeroTier keep their state under `/var/lib`; NetworkManager is told to
 leave their interfaces alone. Enabling these options can open their daemon's
-UDP transport port; SSH and SMB keep their separately configured LAN rules.
+UDP transport port; SSH and SMB keep their separately configured source CIDR rules.
 VPN enrollment and account/device identity are post-installation steps.
 
 ## Passwords and private output
@@ -151,7 +151,11 @@ The private directory is mode 0700 and contains its own Git repository:
 - `keys/host.age`, `keys/operator.age`: private identities, ignored, mode 0600.
 
 The office user has no sudo; `admin` has password-protected sudo. SSH is disabled
-unless a public administrator key and trusted LAN are supplied. Root and SSH
+unless a public administrator key is supplied. Its source CIDR can be a LAN,
+one IP with `/32`, or `0.0.0.0/0` for every IPv4 source. The wizard offers these
+choices explicitly; bare IPs without a prefix are rejected. IPv6 is not opened
+by the all-IPv4 choice. SMB retains its separate restricted CIDR. Internet
+access also requires upstream routing/port forwarding or a VPN. Root and SSH
 password login remain disabled. The host age key must be provisioned before
 first activation, as described in the main README.
 

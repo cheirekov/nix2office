@@ -171,9 +171,13 @@ def wizard(args):
         m["vpn"][name] = name in enabled
     if m["vpn"]["zerotier"]:
         m["vpn"]["zerotier_networks"] = field("ZeroTier network IDs, разделени с интервал (може празно):").replace(",", " ").split()
-    if ask(q.confirm("Да включа SSH за admin с публичен ключ и ограничение до LAN?", default=True)):
+    if ask(q.confirm("Да включа SSH за admin само с публичен ключ?", default=True)):
         m["admin"]["ssh_public_key"] = choose_public_key(ask, select, field)
-        m["admin"]["network"] = field("Доверена IPv4 мрежа за SSH (напр. 192.168.1.0/24):", m["sharing"]["network"] if m["sharing"]["mode"] == "both" else "", "admin", "network")
+        access = select("Откъде да е разрешен SSH достъпът за admin?", [
+            ("cidr", "Задавам IPv4 мрежа или един IP с /32"),
+            ("any", "Отвсякъде — всички IPv4 (0.0.0.0/0)"),
+        ], "cidr")
+        m["admin"]["network"] = "0.0.0.0/0" if access == "any" else field("IPv4 CIDR за SSH (напр. 192.168.1.0/24 или 203.0.113.10/32):", m["sharing"]["network"] if m["sharing"]["mode"] == "both" else "", "admin", "network")
     else:
         print("SSH ще е ИЗКЛЮЧЕН след инсталация. Admin ще влиза от локалната конзола.")
         if not ask(q.confirm("Продължавам без отдалечен SSH достъп?", default=False)):
