@@ -70,3 +70,10 @@ initrd_modules = [] # detected KMS drivers, e.g. ["i915"]
 [devices]
 bluetooth = false
 unfree_firmware = false
+
+# Remote support after desktop login. Never put a password here.
+[remote_support]
+mode = "off" # off, consent, unattended
+id_server = ""
+relay_server = ""
+public_key = ""

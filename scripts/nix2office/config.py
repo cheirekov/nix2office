@@ -23,6 +23,7 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
+    "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": ""},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -125,6 +126,24 @@ def validate_machine(raw):
             raise ConfigError(f"apps.{key}: choose from {', '.join(choices)}.")
     if m["keyboard"]["bulgarian"] not in ("phonetic", "bds"):
         raise ConfigError("keyboard.bulgarian: choose phonetic or bds.")
+    r = m["remote_support"]
+    if r["mode"] not in ("off", "consent", "unattended"):
+        raise ConfigError("remote_support.mode: choose off, consent or unattended.")
+    for key in ("id_server", "relay_server"):
+        text(r[key], "remote_support." + key)
+        if r[key] and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?", r[key]):
+            raise ConfigError("remote_support: use a hostname/IPv4 with optional port.")
+        if ":" in r[key] and not 1 <= int(r[key].rsplit(":", 1)[1]) <= 65535:
+            raise ConfigError("remote_support: invalid port.")
+    text(r["public_key"], "remote_support.public_key")
+    if r["public_key"]:
+        try:
+            if len(base64.b64decode(r["public_key"], validate=True)) != 32:
+                raise ValueError
+        except (ValueError, base64.binascii.Error):
+            raise ConfigError("remote_support.public_key: expected a base64 32-byte public key.") from None
+    if r["mode"] != "off" and not all(r[k] for k in ("id_server", "relay_server", "public_key")):
+        raise ConfigError("remote_support: provide both servers and the public key.")
     extra = m["apps"]["extra"]
     if not isinstance(extra, list) or any(not isinstance(x, str) or x not in CATALOG for x in extra) or len(set(extra)) != len(extra):
         raise ConfigError("apps.extra: choose unique application IDs from the supported catalog.")

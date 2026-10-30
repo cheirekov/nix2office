@@ -13,7 +13,10 @@ let
   bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
 in
 {
-  imports = [ ./networking.nix ];
+  imports = [
+    ./networking.nix
+    ./remote-support.nix
+  ];
   options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
     fonts.microsoftCore = lib.mkEnableOption "Microsoft core fonts (unfreeRedistributable)";
     fonts.officeFallbacks = lib.mkOption {

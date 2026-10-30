@@ -153,6 +153,8 @@ def wizard(args):
         ("both", "PDF Arranger + Xournal++"),
     ], m["apps"]["pdf_editor"])
     m["apps"]["extra"] = ask(q.checkbox("Допълнителни програми (Space за избор; може без отметки):", choices=[q.Choice(v["label"], value=k) for k, v in CATALOG.items()]))
+    from .remote_support import choose
+    choose(m, q, ask)
     m["tools"]["comma"] = ask(q.confirm("Comma — временни програми с готов малък индекс (отделен фиксиран nixpkgs)?", default=False))
     m["fonts"]["office_fallbacks"] = ask(q.confirm("Carlito/Caladea — съвместими заместители за Calibri/Cambria?", default=True))
     m["fonts"]["microsoft_core"] = ask(q.confirm("Microsoft Core Fonts — Times New Roman, Arial и др. (unfree, със собствен лиценз)?", default=False))

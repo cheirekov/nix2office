@@ -96,6 +96,8 @@
             pkgs.git
             pkgs.openssh
             pkgs.gzip
+            pkgs.age
+            pkgs.sops
             pkgs.coreutils
           ];
           text = ''
@@ -148,7 +150,10 @@
         in
         pkgs.mkShellNoCC {
           packages = with pkgs; [
-            (python3.withPackages (p: [ p.questionary ]))
+            (python3.withPackages (p: [
+              p.questionary
+              p.toml
+            ]))
             age
             sops
             mkpasswd

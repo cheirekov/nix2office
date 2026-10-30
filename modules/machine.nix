@@ -26,6 +26,7 @@ let
       "hardware"
       "devices"
       "fonts"
+      "remote_support"
       "tools"
     ];
     user = [
@@ -34,6 +35,12 @@ let
       "email"
     ];
     performance = [ "cpu_governor" ];
+    remote_support = [
+      "mode"
+      "id_server"
+      "relay_server"
+      "public_key"
+    ];
     tools = [ "comma" ];
     fonts = [
       "microsoft_core"
@@ -91,6 +98,7 @@ let
     root = m;
     devices = m.devices or { };
     fonts = m.fonts or { };
+    remote_support = m.remote_support or { };
     tools = m.tools or { };
     user = m.user;
     keyboard = m.keyboard or { };
@@ -145,6 +153,12 @@ in
     ];
   networking.hostName = m.hostname;
   nix2office = {
+    remoteSupport = {
+      mode = (m.remote_support or { }).mode or "off";
+      idServer = (m.remote_support or { }).id_server or "";
+      relayServer = (m.remote_support or { }).relay_server or "";
+      publicKey = (m.remote_support or { }).public_key or "";
+    };
     tools.comma.enable = (m.tools or { }).comma or false;
     fonts.microsoftCore = (m.fonts or { }).microsoft_core or false;
     fonts.officeFallbacks = (m.fonts or { }).office_fallbacks or true;

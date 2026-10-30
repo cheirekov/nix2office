@@ -59,6 +59,8 @@ def edit(machine):
         return result
     machine['apps']['extra'] = ask(q.checkbox('Допълнителни програми (Space за избор):', choices=[
         q.Choice(v['label'], value=k, checked=k in machine['apps']['extra']) for k,v in CATALOG.items()]))
+    from .remote_support import choose
+    choose(machine, q, ask)
     machine["tools"]["comma"] = ask(q.confirm("Comma с готов малък индекс (отделен фиксиран nixpkgs)?", default=machine["tools"]["comma"]))
     for key,label in [('office_fallbacks','Carlito/Caladea'),('microsoft_core','Microsoft Core Fonts (unfree, собствен лиценз)')]:
         machine['fonts'][key] = ask(q.confirm(label+'?', default=machine['fonts'][key]))

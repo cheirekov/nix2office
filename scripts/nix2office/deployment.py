@@ -120,6 +120,15 @@ def _flake(source):
           nix2office.nixosModules.disk
           (nix2office.lib.machineModule ./machine.toml)
           ./host.nix
+          ({ config, lib, ... }: lib.mkIf ((machine.remote_support.mode or "off") == "unattended") {
+            sops.secrets.rustdesk-password = {
+              sopsFile = ./rustdesk.yaml;
+              key = "password";
+              owner = machine.user.name;
+              mode = "0400";
+            };
+            nix2office.remoteSupport.passwordFile = config.sops.secrets.rustdesk-password.path;
+          })
         ];
       };
     };
@@ -149,6 +158,18 @@ def _host(user):
 '''.replace("INITIAL_USER", json.dumps(user))
 
 
+def prepare_rustdesk_secret(machine, dest):
+    if machine['remote_support']['mode'] != 'unattended' or (dest/'rustdesk.yaml').exists():
+        return
+    password = getpass.getpass('RustDesk постоянна парола (поне 12 знака, не се показва): ')
+    if len(password) < 12 or password != getpass.getpass('Повтори RustDesk паролата: '):
+        raise PreparationError('RustDesk password too short or confirmation mismatch.')
+    recipients = [run('age-keygen', '-y', str(dest/'keys'/f'{name}.age')).stdout.strip() for name in ('host', 'operator')]
+    encrypted = run('sops', '--encrypt', '--age', ','.join(recipients), '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin', input=json.dumps({'password': password})).stdout
+    _write(dest/'rustdesk.yaml', encrypted)
+    run('git', '-C', str(dest), 'add', 'rustdesk.yaml')
+
+
 def prepare(machine, dest, source, generate_passwords=False, update=False):
     m = validate_machine(machine)
     dest = check_destination(dest, update)
@@ -159,6 +180,7 @@ def prepare(machine, dest, source, generate_passwords=False, update=False):
         marker = json.loads((dest / ".nix2office.json").read_text())
         if marker.get("user") != m["user"]["name"]:
             raise PreparationError("Changing the login name needs a separate migration or a new deployment; keys/passwords were not changed.")
+        prepare_rustdesk_secret(m, dest)
         _write(dest / "machine.toml", dump_machine(m))
         _write(dest / "flake.nix", _flake(source))
         return dest
@@ -206,6 +228,7 @@ The helper prepares configuration only. It does not build, format, install,
 enrol VPNs or configure Nextcloud accounts.
 ''')
         run("git", "-C", str(dest), "init", "-b", "main")
+        prepare_rustdesk_secret(m, dest)
         run("git", "-C", str(dest), "add", ".gitignore", ".sops.yaml", ".nix2office.json", "README.md", "machine.toml", "host.nix", "flake.nix", "secrets.yaml")
     except BaseException:
         # Only this newly created, mode-0700 directory is ever removed on failure.
@@ -223,6 +246,7 @@ def summary(m):
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
     print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
+    print("RustDesk: " + m["remote_support"]["mode"])
     print("Comma с готов малък индекс: " + ("включен" if m["tools"]["comma"] else "изключен"))
     print("Допълнителни програми: " + (", ".join(m["apps"]["extra"]) or "няма"))
     print(f'Шрифтове: Microsoft Core={m["fonts"]["microsoft_core"]}; Carlito/Caladea={m["fonts"]["office_fallbacks"]}')
