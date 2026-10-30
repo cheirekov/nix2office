@@ -58,7 +58,7 @@ in
     };
     adminNetwork = lib.mkOption {
       type = lib.types.strMatching "[0-9.]+/[0-9]+";
-      default = "192.0.2.0/24";
+      default = "0.0.0.0/0";
       description = "IPv4 source CIDR for administrative SSH; 0.0.0.0/0 allows every IPv4 source.";
     };
     officePasswordFile = lib.mkOption {

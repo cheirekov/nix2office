@@ -74,7 +74,7 @@ class SchemaTests(unittest.TestCase):
             with self.assertRaises(ConfigError):
                 validate_machine({"disk": disk})
 
-    def test_all_ipv4_allowed_for_admin_and_smb_default_remains_scoped(self):
+    def test_all_ipv4_allowed_for_admin_and_smb(self):
         m = machine()
         m["admin"]["network"] = "0.0.0.0/0"
         validated = validate_machine(m)

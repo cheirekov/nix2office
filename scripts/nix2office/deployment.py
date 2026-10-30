@@ -82,16 +82,18 @@ def _write(path, content):
         tmp.unlink(missing_ok=True)
 
 
-def prompt_password(label):
+def prompt_password(label, minimum=8, maximum=None):
     # No piped-input fallback: getpass would otherwise warn and echo on stdin.
     if not os.isatty(0) or not os.isatty(2):
         raise PreparationError("Passwords require an interactive terminal. Use --generate-passwords for an unattended preparation.")
     while True:
         first = getpass.getpass(f"Парола за {label} (не се показва): ")
+        if len(first) < minimum or (maximum is not None and len(first) > maximum) or any(ord(c) < 32 or ord(c) == 127 for c in first):
+            limits = f"{minimum}–{maximum}" if maximum is not None else f"поне {minimum}"
+            print(f"Използвай {limits} знака, без контролни символи. Опитай отново.")
+            continue
         second = getpass.getpass("Повтори паролата: ")
-        if len(first) < 8 or any(ord(c) < 32 or ord(c) == 127 for c in first):
-            print("Използвай поне 8 знака, без контролни символи.")
-        elif first != second:
+        if first != second:
             print("Паролите не съвпадат. Опитай отново.")
         else:
             return first
@@ -161,9 +163,7 @@ def _host(user):
 def prepare_rustdesk_secret(machine, dest):
     if machine['remote_support']['mode'] != 'unattended' or (dest/'rustdesk.yaml').exists():
         return
-    password = getpass.getpass('RustDesk постоянна парола (12–128 знака, не се показва): ')
-    if not 12 <= len(password) <= 128 or any(c in password for c in '\n\r\0') or password != getpass.getpass('Повтори RustDesk паролата: '):
-        raise PreparationError('RustDesk password must have 12 through 128 characters without line breaks; confirmation must match.')
+    password = prompt_password('RustDesk — постоянна парола, 12–128 знака', minimum=12, maximum=128)
     recipients = [run('age-keygen', '-y', str(dest/'keys'/f'{name}.age')).stdout.strip() for name in ('host', 'operator')]
     encrypted = run('sops', '--encrypt', '--age', ','.join(recipients), '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin', input=json.dumps({'password': password})).stdout
     _write(dest/'rustdesk.yaml', encrypted)

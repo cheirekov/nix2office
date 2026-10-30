@@ -58,9 +58,9 @@ class SMBNetworkTests(unittest.TestCase):
                 with self.assertRaisesRegex(ConfigError, r"sharing\.network"):
                     validate_machine(machine(network))
 
-    def test_default_network_stays_scoped(self):
+    def test_default_network_is_all_ipv4(self):
         validated = validate_machine({"disk": "/dev/disk/by-id/ata-EXAMPLE_SSD"})
-        self.assertEqual(validated["sharing"]["network"], "192.0.2.0/24")
+        self.assertEqual(validated["sharing"]["network"], "0.0.0.0/0")
         self.assertEqual(validated["sharing"]["mode"], "client")
 
     def test_smb_and_admin_networks_are_independent(self):

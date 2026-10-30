@@ -1,5 +1,7 @@
 """Exercise destructive-install boundaries with fake SSH/build commands only."""
 import base64
+import contextlib
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -78,7 +80,10 @@ class RescueBoundaries(unittest.TestCase):
         self.assertFalse(any(c[0]=='nix' or '--execute' in c for c in calls))
 
     def test_declined_install_never_executes(self):
-        calls=self.simulate([True,False])
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            calls=self.simulate([True,False])
+        self.assertIn('--resume',output.getvalue())
+        self.assertNotIn('--prepared',output.getvalue())
         self.assertTrue(any(c[0]=='nix' for c in calls))
         self.assertFalse(any('--execute' in c for c in calls))
 

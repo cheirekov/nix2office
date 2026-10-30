@@ -47,6 +47,10 @@ def wizard(args):
     except ImportError:
         raise PreparationError("Interactive menus need questionary. Use nix run .#configure or nix develop.") from None
 
+    from .draft import Menus
+    dest = check_destination(args.output)
+    q = Menus(q, dest, getattr(args, 'draft_scope', None) or args.target or 'local')
+
     def ask(question):
         answer = question.ask()
         if answer is None:
@@ -74,7 +78,6 @@ def wizard(args):
         return ask(q.text(message, default=default, validate=valid)).strip()
 
     m = copy.deepcopy(DEFAULTS)
-    dest = check_destination(args.output)
     print("\nNix2office — подготовка на конфигурация. Стрелки за избор, Enter за потвърждение, Ctrl+C за отказ.")
     print("Първо избираме чий хардуер проверяваме; административният компютър може да е различен.\n")
     inventory = None
@@ -128,12 +131,16 @@ def wizard(args):
     else:
         m["disk"] = field("Цял вътрешен диск /dev/disk/by-id/... (без USB/partition):", key="disk")
     probed_boot = inventory["boot_mode"] if inventory else None
-    m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
-    if probed_boot in ("bios", "uefi") and m["boot_mode"] != probed_boot:
-        raise ConfigError(f"Rescue работи в {probed_boot}, а изборът е {m['boot_mode']}. Рестартирай USB в избрания режим и повтори подготовката.")
+    while True:
+        m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
+        if probed_boot not in ("bios", "uefi") or m["boot_mode"] == probed_boot:
+            break
+        print(f"Rescue работи в {probed_boot}. Избери този режим или Ctrl+C и рестартирай USB в желания друг режим.")
+        q.forget("Начин на зареждане:")
+        m["boot_mode"] = probed_boot
     m["hostname"] = field("Име на компютъра:", m["hostname"], key="hostname")
-    m["user"]["name"] = field("Потребителско име за вход (латиница):", "maria", "user", "name")
-    m["user"]["full_name"] = field("Име за показване (може на кирилица):", "Мария Димитрова", "user", "full_name")
+    m["user"]["name"] = field("Потребителско име за вход (латиница):", m["user"]["name"], "user", "name")
+    m["user"]["full_name"] = field("Име за показване (може на кирилица):", m["user"]["full_name"], "user", "full_name")
     m["user"]["email"] = field("E-mail (незадължителен, само метаданни):", section="user", key="email")
     m["apps"]["browser"] = select("Браузър по подразбиране:", [
         ("firefox-esr", "Firefox ESR — препоръчан начален избор"),
@@ -169,7 +176,7 @@ def wizard(args):
     m["sharing"]["mode"] = select("Windows папки:", [("client", "Достъп до папки на други машини"), ("both", "Достъп + споделяне на собствена папка с парола")], "client")
     if m["sharing"]["mode"] == "both":
         m["sharing"]["folder"] = field("Име на споделена папка в Home (латиница):", "Shared", "sharing", "folder")
-        m["sharing"]["network"] = field("IPv4 достъп до SMB: мрежа (172.16.16.0/24), IP/32 или всички IPv4 (0.0.0.0/0):", section="sharing", key="network")
+        m["sharing"]["network"] = field("IPv4 достъп до SMB: мрежа (172.16.16.0/24), IP/32 или всички IPv4 (0.0.0.0/0):", default="0.0.0.0/0", section="sharing", key="network")
         m["sharing"]["read_only"] = ask(q.confirm("Споделената папка само за четене?", default=False))
         print("След инсталация admin задава отделна SMB парола: sudo smbpasswd -a " + m["user"]["name"])
     enabled = ask(q.checkbox("VPN инструменти (Space включва/изключва; може без отметки; добавят се и по-късно с rebuild):", choices=[
@@ -180,18 +187,35 @@ def wizard(args):
     for name in ("wireguard", "tailscale", "zerotier"):
         m["vpn"][name] = name in enabled
     if m["vpn"]["zerotier"]:
-        m["vpn"]["zerotier_networks"] = field("ZeroTier network IDs, разделени с интервал (може празно):").replace(",", " ").split()
-    if ask(q.confirm("Да включа SSH за admin само с публичен ключ?", default=True)):
-        m["admin"]["ssh_public_key"] = choose_public_key(ask, select, field)
+        while True:
+            ids = field("ZeroTier network IDs, разделени с интервал (може празно):").replace(",", " ").split()
+            trial = copy.deepcopy(DEFAULTS)
+            trial.update(disk=m["disk"], vpn={**m["vpn"], "zerotier_networks": ids})
+            try:
+                validate_machine(trial)
+                m["vpn"]["zerotier_networks"] = ids
+                break
+            except ConfigError as error:
+                print(str(error))
+    while True:
+        ssh_enabled = ask(q.confirm("Да включа SSH за admin само с публичен ключ?", default=True))
+        if ssh_enabled or ask(q.confirm("SSH ще е изключен. Продължавам без отдалечен SSH достъп?", default=False)):
+            break
+        print("Връщам се към избора за SSH.")
+    if ssh_enabled:
+        while True:
+            try:
+                m["admin"]["ssh_public_key"] = choose_public_key(ask, select, field)
+                break
+            except ConfigError as error:
+                print(str(error) + " Връщам се към избора на публичен ключ.")
         access = select("Откъде да е разрешен SSH достъпът за admin?", [
             ("cidr", "Задавам IPv4 мрежа или един IP с /32"),
             ("any", "Отвсякъде — всички IPv4 (0.0.0.0/0)"),
-        ], "cidr")
-        m["admin"]["network"] = "0.0.0.0/0" if access == "any" else field("IPv4 CIDR за SSH (напр. 192.168.1.0/24 или 203.0.113.10/32):", m["sharing"]["network"] if m["sharing"]["mode"] == "both" else "", "admin", "network")
+        ], "any")
+        m["admin"]["network"] = "0.0.0.0/0" if access == "any" else field("IPv4 CIDR за SSH (напр. 192.168.1.0/24 или 203.0.113.10/32):", m["sharing"]["network"] if m["sharing"]["mode"] == "both" else "0.0.0.0/0", "admin", "network")
     else:
         print("SSH ще е ИЗКЛЮЧЕН след инсталация. Admin ще влиза от локалната конзола.")
-        if not ask(q.confirm("Продължавам без отдалечен SSH достъп?", default=False)):
-            raise Cancelled
     generated = args.generate_passwords or select("Първоначални пароли за потребителя и admin:", [
         (False, "Въвеждам ги скрито в терминала; не се записват като текст"),
         (True, "Генерирай случайни; само локално в credentials.json (0600)"),

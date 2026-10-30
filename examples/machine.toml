@@ -38,7 +38,7 @@ bulgarian = "phonetic" # phonetic or bds, alongside US English
 mode = "client" # client or both (authenticated server too)
 workgroup = "WORKGROUP"
 folder = "Shared" # dedicated folder under the desktop user's home
-network = "192.0.2.0/24" # replace with your LAN before enabling the server
+network = "0.0.0.0/0" # all IPv4 sources; narrow to your LAN if desired
 read_only = false
 
 [vpn]
@@ -48,7 +48,7 @@ zerotier = false # service + optional network IDs; controller approval may follo
 zerotier_networks = []
 
 [admin]
-network = "192.0.2.0/24" # SSH source CIDR; 0.0.0.0/0 allows every IPv4 source
+network = "0.0.0.0/0" # SSH source CIDR; 0.0.0.0/0 allows every IPv4 source
 ssh_public_key = "" # empty means SSH disabled; admin can still log in locally
 
 [hardware]

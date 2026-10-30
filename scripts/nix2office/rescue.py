@@ -1,12 +1,14 @@
 """Interactive rescue-to-install orchestration. Erasure requires a final typed disk ID."""
 import ipaddress
 import json
+import shlex
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
 
+from .draft import directory, load, save
 from .config import ConfigError, load_machine
 from .deployment import PreparationError, check_destination, pinned_source, prepare
 from .hardware import probe
@@ -24,6 +26,12 @@ def check_rescue(ssh):
                "test -e /etc/NIXOS && test \"$(id -un)\" = nixos && sudo -n true"])
 
 
+def recovery_command(host, dest, resume=False):
+    return shlex.join(['nix', 'run', '--refresh', '--option', 'builders', '',
+                       'github:cheirekov/nix2office#install', '--', '--target', host,
+                       '--output', str(dest), '--resume' if resume else '--prepared'])
+
+
 def install(args):
     import questionary as q
     def ask(question):
@@ -34,17 +42,30 @@ def install(args):
 
     if args.config or args.update or args.check or args.probe or args.recommend or args.hardware_json or args.ssh_socket or args.ssh_config:
         raise ConfigError("--rescue accepts --target IP, --output DIR and optional --prepared/--resume; use #configure for advanced modes.")
-    host = args.target or ask(q.text("IP адресът от екрана на nixos-rescue:"))
+    last = directory(Path(args.output).expanduser().absolute().parent) / 'last-rescue.json'
+    def valid_host(value):
+        try:
+            ipaddress.IPv4Address(value)
+            return True
+        except ValueError:
+            return 'Въведи IPv4 адреса от rescue екрана, например 192.168.1.50.'
+    host = args.target or ask(q.text("IP адресът от екрана на nixos-rescue:", default=load(last).get('host', ''), validate=valid_host))
     try:
         ipaddress.IPv4Address(host)
     except ValueError:
         raise ConfigError("Enter the rescue IPv4 address only, without user@ or SSH options.") from None
+    save(last, {'host': host})
     if args.resume and args.prepared:
         raise ConfigError("Choose --prepared (fresh install) or --resume (already mounted disk), not both.")
     dest = Path(args.output).expanduser().absolute()
     if args.resume or args.prepared:
         check_destination(dest, update=True)
     else:
+        if (dest / 'machine.toml').is_file() and (dest / '.nix2office.json').is_file():
+            raise PreparationError('Вече има подготвена конфигурация. За нова инсталация от нея:\n'
+                                   + recovery_command(host, dest)
+                                   + '\nАко инсталацията вече е започнала и дискът е монтиран:\n'
+                                   + recovery_command(host, dest, resume=True))
         check_destination(dest)
     source = pinned_source(args.project, args.source)
     print("Подготовка → хардуер → настройки → build → проверка → изрично разрешение за изтриване.")
@@ -85,6 +106,7 @@ def install(args):
 ''')
         config.chmod(0o600)
         base = ["ssh", "-F", str(config)]
+        installation_started = False
         try:
             run(base + ["-fN", "rescue"])
             ssh = base + ["-o", "BatchMode=yes", "rescue"]
@@ -93,6 +115,7 @@ def install(args):
                 inventory = probe("rescue", config, socket)
                 local_args = SimpleNamespace(**vars(args))
                 local_args.target, local_args.ssh_config, local_args.ssh_socket = "rescue", config, socket
+                local_args.draft_scope = host
                 machine, dest, generated = wizard(local_args)
                 dest = prepare(machine, dest, source, generated)
                 (dest / "hardware.json").write_text(json.dumps(inventory, ensure_ascii=False, indent=2) + "\n")
@@ -113,16 +136,23 @@ def install(args):
             run(command)
             if not ask(q.confirm("Build и проверките приключиха. Да започна инсталация?", default=False)):
                 print(f"Готов build в {dest}. Дискът не е променен.")
-                print(f"За по-късна инсталация: #install -- --target {host} --output {dest} --prepared")
+                print("За по-късна инсталация: " + recovery_command(host, dest, resume=args.resume))
                 return 0
             action = "Продължаване БЕЗ форматиране" if args.resume else "ИЗТРИВАНЕ НА ЦЕЛИЯ ДИСК"
             print(f"{action}: {disk} на {host} → {hostname}")
             if ask(q.text("За потвърждение въведи целия /dev/disk/by-id/... път:")) != disk:
                 raise Cancelled
             reboot = ask(q.confirm("Рестарт след успешна инсталация?", default=True))
+            installation_started = True
             run(command + ["--execute"] + (["--reboot"] if reboot else []))
             print("Инсталирано. Избери вътрешния SSD от boot менюто и влез с избрания потребител.")
-            print(f"При прекъсната инсталация: повтори #install -- --target {host} --output {dest} --resume")
+        except (ConfigError, PreparationError, subprocess.CalledProcessError, OSError, KeyboardInterrupt, Cancelled):
+            if (dest / 'machine.toml').is_file():
+                print('Конфигурацията е запазена. Продължи без повторно попълване с:')
+                print(recovery_command(host, dest, args.resume or installation_started))
+            else:
+                print('Ако вече си попълвал менютата, отговорите са в локалната .nix2office чернова. Повтори помощника; паролите се въвеждат отново.')
+            raise
         finally:
             subprocess.run(base + ["-O", "exit", "rescue"], capture_output=True)
     return 0

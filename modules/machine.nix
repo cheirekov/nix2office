@@ -184,7 +184,7 @@ in
       mode = sharing.mode or "client";
       workgroup = sharing.workgroup or "WORKGROUP";
       folder = sharing.folder or "Shared";
-      network = sharing.network or "192.0.2.0/24";
+      network = sharing.network or "0.0.0.0/0";
       readOnly = sharing.read_only or false;
     };
     vpn = {
@@ -193,7 +193,7 @@ in
       zerotier = vpn.zerotier or false;
       zerotierNetworks = vpn.zerotier_networks or [ ];
     };
-    adminNetwork = admin.network or "192.0.2.0/24";
+    adminNetwork = admin.network or "0.0.0.0/0";
     adminAuthorizedKeys = lib.optional ((admin.ssh_public_key or "") != "") admin.ssh_public_key;
     hardware.cpuVendor = hardware.cpu_vendor or "unknown";
     performance.cpuGovernor = performance.cpu_governor or "auto";

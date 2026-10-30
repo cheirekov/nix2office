@@ -8,6 +8,11 @@ its preparation-only behavior.
 The assistant prepares a private flake from an editable `machine.toml`. It does
 not format a disk, install or activate NixOS, start a VPN, or sign in to accounts.
 Menus use arrow keys and Enter; VPN checkboxes use Space. Ctrl+C cancels.
+Non-secret menu answers are checkpointed in a private, Git-ignored `.nix2office/`
+directory next to the deployment. Restarting with the same output and target
+can reuse these answers as editable defaults; passwords are entered again.
+RustDesk server/key fields are validated immediately and invalid passwords are
+requested again without discarding the configuration.
 
 ## Start with the target's hardware
 
@@ -108,10 +113,14 @@ is neither authentication nor Active Directory enrollment.
   server is started.
 - `sharing.mode = "both"`: additionally serve **one dedicated folder** under
   the desktop user's home. SMB2+, no guest login, only that user, and TCP 445
-  allowed from the specified IPv4 LAN CIDR. Choose read-only or writable access.
+  allowed from the specified IPv4 CIDR. Choose read-only or writable access.
   After installation, admin sets a separate Samba credential with
   `sudo smbpasswd -a maria`. Use `\\HOST\Shared` from Windows. Automatic Windows
   discovery/NetBIOS and domain joining are not included.
+
+The default source CIDR for both SMB and admin SSH is `0.0.0.0/0` (all IPv4
+sources); narrow it to a LAN or a single IP/32 when desired. Bare `0.0.0.0` is
+not a source network. Authentication remains required.
 
 The VPN menu selects installed clients/services, not credentials:
 
