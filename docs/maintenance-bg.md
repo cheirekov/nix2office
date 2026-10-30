@@ -50,3 +50,7 @@ nix run --refresh --option builders '' github:cheirekov/nix2office#maintain -- \
 ## Възстановяване
 
 За системен проблем първата възможност е предишна генерация от boot менюто. Това не връща автоматично документи, keyring или променени файлове в Home. Запазването/нулирането на лични настройки и comma с готова малка база остават следващи отделни етапи.
+
+## Проверено внедряване
+
+Първото обновяване на място е проверено на експерименталната AMD машина: Remmina + Microsoft Core Fonts + Carlito/Caladea, 42 липсващи store paths, успешна activation и запазена XFCE сесия. Fontconfig намира Times New Roman за `lang=bg`, Arial, Carlito при заявка за Calibri и Caladea при заявка за Cambria. Останалите приложения са избираеми; това не е функционален тест на всяко от тях.

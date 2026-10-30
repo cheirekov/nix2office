@@ -35,7 +35,7 @@ def transfer(system, ssh, password):
     exporter.stdout.close()
     # The password is one hidden input line; it is never an argument, file or log.
     command = "sudo -k -S -p '' -- sh -c " + shlex.quote('set -eu; gzip -d | nix-store --import')
-    importer = subprocess.Popen(ssh + [command], stdin=subprocess.PIPE)
+    importer = subprocess.Popen(ssh + [command], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
     try:
         importer.stdin.write((password+'\n').encode()); importer.stdin.flush()
         shutil.copyfileobj(compressor.stdout, importer.stdin)
@@ -80,7 +80,7 @@ def main():
     if a.revision and not re.fullmatch('[0-9a-f]{40}',a.revision):
         p.error('--revision must have 40 lowercase hexadecimal digits')
     try:
-        d=a.deployment.expanduser().resolve()
+        d=a.deployment.expanduser().absolute()
         machine=load_machine(d/'machine.toml')
         if a.edit:
             machine=edit(machine)
