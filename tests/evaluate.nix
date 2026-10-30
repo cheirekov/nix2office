@@ -53,6 +53,19 @@ let
                 adminNetwork = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
                 adminAuthorizedKeys = lib.mkForce [ "ssh-ed25519 AAAA evaluation-only" ];
                 fonts.microsoftCore = lib.mkForce variant.services;
+                remoteSupport = {
+                  mode = lib.mkForce (
+                    if variant.services then
+                      "consent"
+                    else if name == "chrome" then
+                      "unattended"
+                    else
+                      "off"
+                  );
+                  idServer = lib.mkForce "rustdesk.example.org";
+                  relayServer = lib.mkForce "rustdesk.example.org";
+                  publicKey = lib.mkForce "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+                };
                 tools.comma.enable = lib.mkForce variant.services;
                 apps.extra = lib.mkForce (lib.optional variant.services "remmina");
                 devices.bluetooth = lib.mkForce variant.services;
@@ -64,6 +77,7 @@ let
                 apps.nextcloud = lib.mkForce variant.services;
                 bootMode = lib.mkForce variant.boot;
                 keyboard.bulgarian = lib.mkForce variant.bg;
+                sharing.network = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
                 sharing.mode = lib.mkForce (if variant.services then "both" else "client");
                 vpn.tailscale = lib.mkForce variant.services;
                 vpn.zerotier = lib.mkForce variant.services;
@@ -94,6 +108,11 @@ let
     assert
       (builtins.elem "nix2office-comma-small-db" (map lib.getName c.environment.systemPackages))
       == variant.services;
+    assert (builtins.hasAttr "rustdesk" c.systemd.services) == (variant.services || name == "chrome");
+    assert !(builtins.hasAttr "nix2office-rustdesk" home.systemd.user.services);
+    assert
+      !(builtins.hasAttr "rustdesk" c.systemd.services)
+      || c.systemd.services.rustdesk.serviceConfig.User == "root";
     assert c.services.openssh.enable;
     assert !c.services.openssh.openFirewall;
     assert !c.services.openssh.settings.PasswordAuthentication;
@@ -101,7 +120,7 @@ let
     assert c.services.openssh.settings.PermitRootLogin == "no";
     assert lib.hasInfix "ip saddr ${c.nix2office.adminNetwork} tcp dport 22 accept"
       c.networking.firewall.extraInputRules;
-    assert c.nix2office.sharing.network != "0.0.0.0/0";
+    assert (c.nix2office.sharing.network == "0.0.0.0/0") == variant.services;
     assert c.services.samba.enable == variant.services;
     assert c.services.tailscale.enable == variant.services;
     assert c.services.zerotierone.enable == variant.services;

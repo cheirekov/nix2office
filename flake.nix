@@ -153,6 +153,7 @@
             (python3.withPackages (p: [
               p.questionary
               p.toml
+              p.pynacl
             ]))
             age
             sops

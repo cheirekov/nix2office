@@ -25,9 +25,28 @@ printf 'N2O_PCI='; for d in /sys/bus/pci/devices/*; do
   driver=unbound; test ! -e "$d/driver" || driver=$(basename "$(readlink -f "$d/driver")")
   printf '%s:%s:%s:%s ' "$(cat "$d/class" | sed s/0x//)" "$(cat "$d/vendor" | sed s/0x//)" "$(cat "$d/device" | sed s/0x//)" "$driver"
 done; printf '\n'
+printf 'N2O_DRIVER_CANDIDATES='; for d in /sys/bus/pci/devices/*; do
+  test -r "$d/modalias" || continue
+  test ! -e "$d/driver" || continue
+  for module in $(modprobe --resolve-alias "$(cat "$d/modalias")" 2>/dev/null || true); do
+    printf '%s:%s:%s:%s ' "$(cat "$d/class" | sed s/0x//)" "$(cat "$d/vendor" | sed s/0x//)" "$(cat "$d/device" | sed s/0x//)" "$module"
+  done
+done; printf '\n'
+if kernel_log=$(dmesg 2>/dev/null); then readable=1
+elif kernel_log=$(sudo -n dmesg 2>/dev/null); then readable=1
+else kernel_log=; readable=0; fi
+printf 'N2O_FIRMWARE_LOG_READABLE=%s\n' "$readable"
+printf 'N2O_MISSING_FIRMWARE='; printf '%s\n' "$kernel_log" | sed -n 's/.*Direct firmware load for \(.*\) failed with error -2.*/\1/p' | sort -u | head -n 20 | tr '\n' ' '; printf '\n'
 printf 'N2O_USB='; for d in /sys/bus/usb/devices/*; do
   test -r "$d/idVendor" || continue
   printf '%s:%s ' "$(cat "$d/idVendor")" "$(cat "$d/idProduct")"
+done; printf '\n'
+printf 'N2O_USB_INTERFACES='; for d in /sys/bus/usb/devices/*; do
+  test -r "$d/bInterfaceClass" || continue
+  parent=$(dirname "$(readlink -f "$d")")
+  test -r "$parent/idVendor" || continue
+  driver=unbound; test ! -e "$d/driver" || driver=$(basename "$(readlink -f "$d/driver")")
+  printf '%s:%s:%s:%s ' "$(cat "$parent/idVendor")" "$(cat "$parent/idProduct")" "$(cat "$d/bInterfaceClass")" "$driver"
 done; printf '\n'
 printf 'N2O_BLUETOOTH='; found=0
 for d in /sys/class/bluetooth/hci*; do test ! -e "$d" || found=1; done
@@ -93,7 +112,11 @@ def parse_probe(output, source="local"):
                 "threads": int(fields["N2O_THREADS"]), "boot_mode": fields["N2O_BOOT"],
                 "initrd_modules": modules, "disks": disks,
                 "pci_ids": fields.get("N2O_PCI", "").split(), "usb_ids": fields.get("N2O_USB", "").split(),
-                "bluetooth_detected": fields.get("N2O_BLUETOOTH") == "1"}
+                "bluetooth_detected": fields.get("N2O_BLUETOOTH") == "1",
+                "usb_interfaces": fields.get("N2O_USB_INTERFACES", "").split(),
+                "driver_candidates": fields.get("N2O_DRIVER_CANDIDATES", "").split(),
+                "missing_firmware": fields.get("N2O_MISSING_FIRMWARE", "").split(),
+                "firmware_log_readable": fields.get("N2O_FIRMWARE_LOG_READABLE") == "1"}
     except (ValueError, KeyError, TypeError):
         raise ConfigError("Hardware inventory could not be parsed; expected Linux /proc, sysfs and a recent lsblk.") from None
 
@@ -145,21 +168,78 @@ def recommendation(inventory):
     if inventory.get("bluetooth_detected"):
         notes.append("Bluetooth адаптер е открит: препоръчваме BlueZ + Blueman (меню и системна икона).")
     pci = inventory.get("pci_ids", [])
-    if any(v.startswith("03") and v.split(":")[1] == "10de" for v in pci):
-        notes.append("NVIDIA GPU: провери PCI ID и поддържаната driver branch преди proprietary драйвер; той не се избира автоматично. Hybrid GPU изисква отделна PRIME конфигурация.")
-    for device in pci:
-        if device.endswith(":unbound") and device[:2] in ("02", "03", "04"):
-            notes.append("Устройство без активен драйвер (class:vendor:device:driver): " + device + ". Провери firmware/driver преди инсталация; unfree firmware е изричен избор.")
+    review = hardware_review(inventory)
+    notes.extend(review["notes"])
     notes.append("Звук: PipeWire + ALSA/Pulse и графични настройки са включени; HDMI/аналоговият изход се избира в Настройки → Звук.")
     governor = balanced_governor(inventory)
     notes.append("CPU governor: " + governor + ". Performance остава избор за сравнение след инсталация, с повече консумация/топлина; няма обещан процент ускорение.")
     return {"profile": "light" if light else "standard", "cpu_governor": governor, "browser": "firefox-esr", "office": "libreoffice",
-            "pdf_editor": "pdfarranger" if light else "both", "notes": notes}
+            "pdf_editor": "pdfarranger" if light else "both", "hardware_review": review, "notes": notes}
+
+
+def hardware_review(inventory):
+    """Evidence-based choices; a bound driver is not proof of 3D acceleration."""
+    devices = []
+    for raw in inventory.get('pci_ids', []):
+        match = re.fullmatch(r'([0-9a-fA-F]{6}):([0-9a-fA-F]{4}):([0-9a-fA-F]{4}):([A-Za-z0-9_-]+)', raw)
+        if match:
+            cls, vendor, device, driver = match.groups()
+            devices.append(dict(raw=raw, kind=cls[:2], vendor=vendor.lower(), device=device.lower(), driver=driver))
+    graphics = [d for d in devices if d['kind'] == '03']
+    notes = []
+    modules = set(inventory.get('initrd_modules', []))
+    review = False
+    for d in graphics:
+        if d['driver'] in GPU_MODULES:
+            modules.add(d['driver'])
+        identity = d['vendor'] + ':' + d['device']
+        if identity == '10de:0641':
+            if d['driver'] == 'nouveau':
+                notes.append('GeForce 9400 GT (10de:0641): автоматично nouveau + Mesa и ранно KMS. NVIDIA 340 е историческият proprietary клон; не налагаме legacy драйвер/стар kernel за тази офис конфигурация.')
+            else:
+                review = True
+                notes.append('GeForce 9400 GT (10de:0641): няма потвърден nouveau; необходима е проверка преди графична инсталация.')
+        elif d['vendor'] == '10de':
+            if d['driver'] == 'nouveau':
+                notes.append('NVIDIA ' + identity + ': запазваме открития nouveau автоматично. Избор на proprietary branch изисква съвместимост по PCI ID; само vendor ID не е достатъчен.')
+            else:
+                review = True
+                notes.append('NVIDIA ' + identity + ': необходима е проверка на поддържания driver branch и kernel; не избираме произволен nvidia пакет.')
+    if len(graphics) > 1:
+        review = True
+        notes.append('Открити са няколко GPU: не налагаме PRIME/offload или изключване на карта без PCI адреси и проверка на свързания дисплей.')
+    for d in devices:
+        if d['driver'] == 'unbound':
+            identity = d['vendor'] + ':' + d['device']
+            candidates = [c.rsplit(':', 1)[-1] for c in inventory.get('driver_candidates', []) if ':' + identity + ':' in c]
+            if d['kind'] == '06' or (d['kind'] not in ('01', '02', '03', '04', '08', '0c') and not candidates):
+                continue # Bridges/host functions often intentionally have no driver.
+            review = True
+            notes.append('Устройство без активен драйвер ' + d['raw'] + '; кандидати от kernel modalias: ' + (', '.join(candidates) or 'няма данни') + '. Не е доказателство за липсващ firmware.')
+    for raw in inventory.get('usb_interfaces', []):
+        match = re.fullmatch(r'([0-9a-fA-F]{4}):([0-9a-fA-F]{4}):([0-9a-fA-F]{2}):unbound', raw)
+        if match:
+            review = True
+            notes.append('USB интерфейс без активен драйвер ' + raw + '; провери устройството, kernel driver и firmware. USB ID сам по себе си не доказва работещо устройство.')
+    missing = inventory.get('missing_firmware', [])
+    if missing:
+        review = True
+        notes.append('Kernel съобщава неуспешно зареждане на firmware: ' + ', '.join(missing) + '. Възможен е работещ fallback; допълнителният firmware не гарантира решение.')
+    elif not inventory.get('firmware_log_readable', False):
+        notes.append('Kernel firmware log не е достъпен: липсата на firmware грешки не е проверена.')
+    else:
+        notes.append('В прочетения kernel log няма Direct firmware load/error -2; това не е пълен тест за firmware съвместимост.')
+    if not inventory.get('bluetooth_detected'):
+        notes.append('Bluetooth не е открит: услугите остават изключени автоматично; USB адаптер може да се добави по-късно.')
+    notes.append('Автоматично: CPU microcode по vendor, Mesa/DRM, откритите KMS модули, ALSA/PipeWire; мрежовите/звуковите kernel драйвери се зареждат чрез modalias. Това не е benchmark за оптимален performance.')
+    return dict(early_modules=sorted(modules & set(GPU_MODULES)), needs_review=review, notes=notes)
 
 
 def machine_hardware(inventory):
     # Old saved inventories remain valid and get unknown/empty new facts.
-    return {k: inventory.get(k, default) for k, default in DEFAULTS["hardware"].items()}
+    result = {k: inventory.get(k, default) for k, default in DEFAULTS["hardware"].items()}
+    result["initrd_modules"] = hardware_review(inventory)["early_modules"]
+    return result
 
 
 def balanced_governor(inventory):
@@ -189,6 +269,7 @@ def describe_inventory(inventory):
     print("Bluetooth: " + ("открит адаптер" if inventory.get("bluetooth_detected") else "не е открит; може да е изключен във firmware"))
     for disk in eligible_disks(inventory):
         print(f'Вътрешен диск: {disk["model"]} | {disk["size_bytes"] / 2**30:.1f} GiB | {"HDD" if disk["rotational"] else "SSD/flash"}')
+    print("Хардуерен отчет: " + ("има устройства/драйвери за проверка" if advice["hardware_review"]["needs_review"] else "няма открит необвързан съществен интерфейс в проверените данни"))
     print('Препоръка: ' + advice['profile'] + ', Firefox ESR, LibreOffice; PDF: ' + advice['pdf_editor'])
     for note in advice['notes']:
         print('• ' + note)

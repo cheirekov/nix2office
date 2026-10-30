@@ -32,7 +32,7 @@ in
     network = lib.mkOption {
       type = lib.types.strMatching "[0-9.]+/[0-9]+";
       default = "192.0.2.0/24";
-      description = "Trusted IPv4 CIDR allowed to reach the SMB server.";
+      description = "IPv4 source CIDR allowed to reach the SMB server; 0.0.0.0/0 allows every IPv4 source.";
     };
     readOnly = lib.mkOption {
       type = lib.types.bool;
@@ -62,8 +62,9 @@ in
         ++ lib.optional cfg.vpn.zerotier "interface-name:zt*";
       assertions = [
         {
-          assertion = (import ../lib/valid-ipv4-cidr.nix lib) cfg.sharing.network;
-          message = "SMB access requires a specific IPv4 CIDR with prefix 1 through 32.";
+          assertion =
+            cfg.sharing.network == "0.0.0.0/0" || (import ../lib/valid-ipv4-cidr.nix lib) cfg.sharing.network;
+          message = "SMB access requires an IPv4 CIDR (/1 through /32), or 0.0.0.0/0 for every IPv4 source.";
         }
         {
           assertion =

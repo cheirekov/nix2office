@@ -103,7 +103,11 @@ def wizard(args):
         m["profile"] = advice["profile"]
         m["performance"]["cpu_governor"] = advice["cpu_governor"]
         m["boot_mode"] = inventory["boot_mode"] if inventory["boot_mode"] in ("bios", "uefi") else "bios"
-    m["devices"]["bluetooth"] = ask(q.confirm("Bluetooth + графичен Blueman мениджър?", default=bool(inventory and inventory.get("bluetooth_detected"))))
+    if inventory and not inventory.get("bluetooth_detected"):
+        m["devices"]["bluetooth"] = False
+        print("Bluetooth: не е открит адаптер; BlueZ/Blueman остават изключени. Може да се включат по-късно в machine.toml.")
+    else:
+        m["devices"]["bluetooth"] = ask(q.confirm("Открит Bluetooth: включване на BlueZ + Blueman?" if inventory else "Bluetooth + Blueman (няма хардуерна проверка)?", default=bool(inventory)))
     m["devices"]["unfree_firmware"] = ask(q.confirm("Допълнителен unfree firmware? Redistributable firmware вече е включен.", default=False))
     m["profile"] = select("Начален профил (пакетите остават избираеми):", [
         ("light", "Light — Firefox ESR, LibreOffice, PDF Arranger"),
@@ -165,7 +169,7 @@ def wizard(args):
     m["sharing"]["mode"] = select("Windows папки:", [("client", "Достъп до папки на други машини"), ("both", "Достъп + споделяне на собствена папка с парола")], "client")
     if m["sharing"]["mode"] == "both":
         m["sharing"]["folder"] = field("Име на споделена папка в Home (латиница):", "Shared", "sharing", "folder")
-        m["sharing"]["network"] = field("Доверена IPv4 мрежа за SMB (напр. 192.168.1.0/24):", section="sharing", key="network")
+        m["sharing"]["network"] = field("IPv4 достъп до SMB: мрежа (172.16.16.0/24), IP/32 или всички IPv4 (0.0.0.0/0):", section="sharing", key="network")
         m["sharing"]["read_only"] = ask(q.confirm("Споделената папка само за четене?", default=False))
         print("След инсталация admin задава отделна SMB парола: sudo smbpasswd -a " + m["user"]["name"])
     enabled = ask(q.checkbox("VPN инструменти (Space включва/изключва; може без отметки; добавят се и по-късно с rebuild):", choices=[

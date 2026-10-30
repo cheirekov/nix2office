@@ -161,9 +161,9 @@ def _host(user):
 def prepare_rustdesk_secret(machine, dest):
     if machine['remote_support']['mode'] != 'unattended' or (dest/'rustdesk.yaml').exists():
         return
-    password = getpass.getpass('RustDesk постоянна парола (поне 12 знака, не се показва): ')
-    if len(password) < 12 or password != getpass.getpass('Повтори RustDesk паролата: '):
-        raise PreparationError('RustDesk password too short or confirmation mismatch.')
+    password = getpass.getpass('RustDesk постоянна парола (12–128 знака, не се показва): ')
+    if not 12 <= len(password) <= 128 or any(c in password for c in '\n\r\0') or password != getpass.getpass('Повтори RustDesk паролата: '):
+        raise PreparationError('RustDesk password must have 12 through 128 characters without line breaks; confirmation must match.')
     recipients = [run('age-keygen', '-y', str(dest/'keys'/f'{name}.age')).stdout.strip() for name in ('host', 'operator')]
     encrypted = run('sops', '--encrypt', '--age', ','.join(recipients), '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin', input=json.dumps({'password': password})).stdout
     _write(dest/'rustdesk.yaml', encrypted)
