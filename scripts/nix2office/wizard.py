@@ -136,12 +136,16 @@ def wizard(args):
         ("chromium", "Chromium"), ("brave", "Brave"),
         ("google-chrome", "Google Chrome — proprietary/unfree"),
     ], m["apps"]["browser"])
-    m["apps"]["office"] = select("Офис приложения:", [
+    office = select("Офис приложения (избери пакет или комбинация):", [
         ("libreoffice", "LibreOffice — български интерфейс, Tabbed, Writer/Calc/Impress/Draw"),
         ("onlyoffice", "ONLYOFFICE Desktop Editors — документи, таблици, презентации"),
+        ("artcraft", "ArtCraft — WordCraft, DeckCraft, GridCraft, PdfCraft (експериментален)"),
+        ("libreoffice+artcraft", "LibreOffice + ArtCraft (експериментален)"),
+        ("onlyoffice+artcraft", "ONLYOFFICE + ArtCraft (експериментален)"),
         ("none", "Без офис пакет"),
     ], m["apps"]["office"])
-    m["apps"]["artcraft"] = ask(q.confirm("ArtCraft експериментален комплект (WordCraft/GridCraft/DeckCraft/PdfCraft) допълнително?", default=False))
+    m["apps"]["artcraft"] = "artcraft" in office.split("+")
+    m["apps"]["office"] = "none" if office == "artcraft" else office.split("+")[0]
     m["apps"]["pdf_editor"] = select("PDF инструменти (Atril четецът винаги е включен):", [
         ("none", "Без допълнителен PDF редактор"),
         ("pdfarranger", "PDF Arranger — подреждане, разделяне и събиране на страници"),

@@ -49,10 +49,11 @@ checks the disk, then asks permission and requires the full disk ID before erasi
 an interrupted installation on an already mounted target without formatting.
 See the [complete Bulgarian beginner guide](docs/rescue-install-bg.md).
 
-Experimental ArtCraft is an optional additional set: **WordCraft, GridCraft,
-DeckCraft and PdfCraft only**, with pinned upstream binaries and hashes. Select
-`apps.artcraft = true` in `machine.toml`, or build `.#artcraft` separately. It does
-not replace the selected main office suite or its default document handlers.
+Experimental ArtCraft contains **WordCraft, GridCraft, DeckCraft and PdfCraft
+only**, with pinned upstream binaries and hashes. The office menu offers it alone
+or together with LibreOffice/ONLYOFFICE. In `machine.toml`, set `apps.artcraft = true`
+(and `apps.office = "none"` for ArtCraft alone), or build `.#artcraft` separately.
+When combined, the main suite retains its default document handlers.
 
 ## Start with the assistant
 

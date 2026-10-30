@@ -89,7 +89,7 @@ account is configured from this address.
 | Selection | Values and behavior |
 | --- | --- |
 | Browser | `firefox-esr`, `chromium`, `brave`, `google-chrome`; matching desktop shortcut, XFCE browser helper and HTTP/HTTPS associations |
-| Office | `libreoffice` with Bulgarian translations and initial Tabbed layout; `onlyoffice` Desktop Editors; `none` |
+| Office | Menu: LibreOffice, ONLYOFFICE, experimental ArtCraft, either main suite + ArtCraft, or no office. TOML keeps `office = "libreoffice"`, `"onlyoffice"` or `"none"`, with a separate `artcraft` boolean. ArtCraft alone is `office = "none"` and `artcraft = true`. |
 | PDF | `pdfarranger` for page ordering/merging/splitting; `xournalpp` for handwriting/annotations; `both`; `none`. Atril always reads PDFs. LibreOffice includes Draw for basic PDF edits. These tools do not promise Acrobat-equivalent document fidelity. |
 | Nextcloud | Optional desktop client and autostart; accounts and folders chosen in its GUI |
 | Keyboard | `phonetic` or `bds`, alongside US English; language indicator and Alt+Shift, including a login layout selector |

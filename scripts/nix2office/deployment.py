@@ -216,13 +216,16 @@ enrol VPNs or configure Nextcloud accounts.
 
 def summary(m):
     u = m["user"]
+    office = [] if m["apps"]["office"] == "none" else [m["apps"]["office"]]
+    if m["apps"]["artcraft"]:
+        office.append("ArtCraft (WordCraft, DeckCraft, GridCraft, PdfCraft)")
     print(f'Машина: {m["hostname"]} | {m["boot_mode"].upper()} | профил {m["profile"]}')
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
-    print(f'Приложения: {m["apps"]["browser"]}, {m["apps"]["office"]}, PDF: {m["apps"]["pdf_editor"]}, Nextcloud: {m["apps"]["nextcloud"]}')
+    print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
     print(f'Клавиатура: US + BG {m["keyboard"]["bulgarian"]}; Workgroup: {m["sharing"]["workgroup"]} ({m["sharing"]["mode"]})')
     print('VPN: ' + (', '.join(k for k in ("wireguard", "tailscale", "zerotier") if m["vpn"][k]) or '(няма)'))
-    print(f'Bluetooth: {m["devices"]["bluetooth"]}; unfree firmware: {m["devices"]["unfree_firmware"]}; ArtCraft: {m["apps"]["artcraft"]}')
+    print(f'Bluetooth: {m["devices"]["bluetooth"]}; unfree firmware: {m["devices"]["unfree_firmware"]}')
     print('Admin SSH: ' + ('включен, мрежа ' + m['admin']['network'] if m['admin']['ssh_public_key'] else 'ИЗКЛЮЧЕН'))
     print('CPU governor: ' + m["performance"]["cpu_governor"])
 
