@@ -46,6 +46,12 @@ let
   // lib.optionalAttrs (cfg.apps.office == "onlyoffice") {
     office = desktopShortcut "Офис документи" "onlyoffice-desktopeditors" "onlyoffice-desktopeditors";
   }
+  // lib.optionalAttrs cfg.apps.artcraft {
+    wordcraft = desktopShortcut "WordCraft — Документи" "ai.storyteller.wordcraft" "wordcraft";
+    gridcraft = desktopShortcut "GridCraft — Таблици" "ai.storyteller.gridcraft" "gridcraft";
+    deckcraft = desktopShortcut "DeckCraft — Презентации" "ai.storyteller.deckcraft" "deckcraft";
+    pdfcraft = desktopShortcut "PdfCraft — PDF редактор" "ai.storyteller.pdfcraft" "pdfcraft";
+  }
   // lib.optionalAttrs cfg.apps.nextcloud {
     nextcloud = desktopShortcut "Nextcloud" "Nextcloud" "nextcloud";
   }
@@ -260,6 +266,10 @@ in
           "writer"
           "calc"
           "office"
+          "wordcraft"
+          "gridcraft"
+          "deckcraft"
+          "pdfcraft"
           "nextcloud"
           "pdf"
         ]
