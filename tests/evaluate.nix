@@ -50,6 +50,9 @@ let
             ({ lib, ... }: {
               users.allowNoPasswordLogin = true; # Locked accounts in evaluation only.
               nix2office = {
+                devices.bluetooth = lib.mkForce variant.services;
+                devices.unfreeFirmware = lib.mkForce variant.services;
+                apps.artcraft = lib.mkForce variant.services;
                 apps.browser = lib.mkForce variant.browser;
                 apps.office = lib.mkForce variant.office;
                 apps.pdfEditor = lib.mkForce variant.pdf;
@@ -76,6 +79,9 @@ let
     assert home.nix2office.user.email == "maria@example.org";
     assert home.xdg.mimeApps.defaultApplications."x-scheme-handler/https" == [ desktop ];
     assert c.services.xserver.xkb.variant == (if variant.bg == "bds" then "," else ",phonetic");
+    assert c.hardware.bluetooth.enable == variant.services;
+    assert c.services.blueman.enable == variant.services;
+    assert c.hardware.enableAllFirmware == variant.services;
     assert c.services.samba.enable == variant.services;
     assert c.services.tailscale.enable == variant.services;
     assert c.services.zerotierone.enable == variant.services;

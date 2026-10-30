@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .config import ConfigError, DEFAULTS, validate_machine, validate_public_key
 from .deployment import PreparationError, check_destination, summary
+from .ssh_keys import choose_public_key
 from .hardware import describe_inventory, eligible_disks, machine_hardware, probe
 
 
@@ -102,6 +103,8 @@ def wizard(args):
         m["profile"] = advice["profile"]
         m["performance"]["cpu_governor"] = advice["cpu_governor"]
         m["boot_mode"] = inventory["boot_mode"] if inventory["boot_mode"] in ("bios", "uefi") else "bios"
+    m["devices"]["bluetooth"] = ask(q.confirm("Bluetooth + графичен Blueman мениджър?", default=bool(inventory and inventory.get("bluetooth_detected"))))
+    m["devices"]["unfree_firmware"] = ask(q.confirm("Допълнителен unfree firmware? Redistributable firmware вече е включен.", default=False))
     m["profile"] = select("Начален профил (пакетите остават избираеми):", [
         ("light", "Light — Firefox ESR, LibreOffice, PDF Arranger"),
         ("standard", "Standard — същите + Xournal++ за PDF бележки"),
@@ -123,14 +126,7 @@ def wizard(args):
     probed_boot = inventory["boot_mode"] if inventory else None
     m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
     if probed_boot in ("bios", "uefi") and m["boot_mode"] != probed_boot:
-        print(f"\nНа {inventory['source']} откритият режим е {probed_boot}, а избраният е {m['boot_mode']}.")
-        if m["boot_mode"] == "uefi":
-            print("Инсталация на UEFI от Legacy BIOS сесия не довършва: bootctl отказва да запише EFI променливи, а това настъпва след форматирането на диска.")
-        else:
-            print("Legacy BIOS запис от UEFI сесия става, но машината трябва да го зареди през CSM.")
-        if not ask(q.confirm(f"Rescue средата заредена ли е през {m['boot_mode']}?", default=False)):
-            m["boot_mode"] = probed_boot
-            print(f"Режимът на зареждане остава {probed_boot}, както го откри probe-ът.")
+        raise ConfigError(f"Rescue работи в {probed_boot}, а изборът е {m['boot_mode']}. Рестартирай USB в избрания режим и повтори подготовката.")
     m["hostname"] = field("Име на компютъра:", m["hostname"], key="hostname")
     m["user"]["name"] = field("Потребителско име за вход (латиница):", "maria", "user", "name")
     m["user"]["full_name"] = field("Име за показване (може на кирилица):", "Мария Димитрова", "user", "full_name")
@@ -145,6 +141,7 @@ def wizard(args):
         ("onlyoffice", "ONLYOFFICE Desktop Editors — документи, таблици, презентации"),
         ("none", "Без офис пакет"),
     ], m["apps"]["office"])
+    m["apps"]["artcraft"] = ask(q.confirm("ArtCraft експериментален комплект (WordCraft/GridCraft/DeckCraft/PdfCraft) допълнително?", default=False))
     m["apps"]["pdf_editor"] = select("PDF инструменти (Atril четецът винаги е включен):", [
         ("none", "Без допълнителен PDF редактор"),
         ("pdfarranger", "PDF Arranger — подреждане, разделяне и събиране на страници"),
@@ -161,7 +158,7 @@ def wizard(args):
         m["sharing"]["network"] = field("Доверена IPv4 мрежа за SMB (напр. 192.168.1.0/24):", section="sharing", key="network")
         m["sharing"]["read_only"] = ask(q.confirm("Споделената папка само за четене?", default=False))
         print("След инсталация admin задава отделна SMB парола: sudo smbpasswd -a " + m["user"]["name"])
-    enabled = ask(q.checkbox("VPN клиенти (Space за отметка; акаунтите се настройват след инсталацията):", choices=[
+    enabled = ask(q.checkbox("VPN инструменти (Space включва/изключва; може без отметки; добавят се и по-късно с rebuild):", choices=[
         q.Choice("WireGuard — NetworkManager import", value="wireguard", checked=True),
         q.Choice("Tailscale — отделна услуга + Trayscale GUI", value="tailscale"),
         q.Choice("ZeroTier — отделна услуга; настройка през admin/CLI", value="zerotier"),
@@ -170,17 +167,13 @@ def wizard(args):
         m["vpn"][name] = name in enabled
     if m["vpn"]["zerotier"]:
         m["vpn"]["zerotier_networks"] = field("ZeroTier network IDs, разделени с интервал (може празно):").replace(",", " ").split()
-    if ask(q.confirm("Административен SSH с публичен ключ и ограничение до LAN?", default=False)):
-        key = Path(field("Път до публичния OpenSSH ключ (.pub):")).expanduser()
-        try:
-            value = key.read_text(encoding="utf-8").strip()
-        except OSError:
-            raise ConfigError("Cannot read the public SSH key file.") from None
-        validate_public_key(value)
-        if not value:
-            raise ConfigError("The public SSH key file is empty.")
-        m["admin"]["ssh_public_key"] = value
+    if ask(q.confirm("Да включа SSH за admin с публичен ключ и ограничение до LAN?", default=True)):
+        m["admin"]["ssh_public_key"] = choose_public_key(ask, select, field)
         m["admin"]["network"] = field("Доверена IPv4 мрежа за SSH (напр. 192.168.1.0/24):", m["sharing"]["network"] if m["sharing"]["mode"] == "both" else "", "admin", "network")
+    else:
+        print("SSH ще е ИЗКЛЮЧЕН след инсталация. Admin ще влиза от локалната конзола.")
+        if not ask(q.confirm("Продължавам без отдалечен SSH достъп?", default=False)):
+            raise Cancelled
     generated = args.generate_passwords or select("Първоначални пароли за потребителя и admin:", [
         (False, "Въвеждам ги скрито в терминала; не се записват като текст"),
         (True, "Генерирай случайни; само локално в credentials.json (0600)"),

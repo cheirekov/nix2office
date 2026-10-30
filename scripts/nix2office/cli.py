@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import subprocess
 
 from .config import ConfigError, load_machine, validate_machine
 from .deployment import PreparationError, check_destination, completion, pinned_source, prepare, summary
@@ -11,7 +12,10 @@ from .wizard import Cancelled, load_inventory, wizard
 
 
 def main(legacy=False):
-    parser = argparse.ArgumentParser(description="Prepare a private Nix2office flake. No build, installation or remote changes.")
+    parser = argparse.ArgumentParser(description=("Full nixos-rescue installation wizard: discover, configure, build, then explicitly confirm disk erasure." if "--rescue" in sys.argv else "Prepare a private Nix2office flake. No build, installation or remote changes."), epilog="Beginner guide: https://github.com/cheirekov/nix2office/blob/main/docs/rescue-install-bg.md")
+    parser.add_argument("--rescue", action="store_true", help="Full nixos-rescue installation wizard; prompts before erasing")
+    parser.add_argument("--prepared", action="store_true", help="With --rescue: use an existing deployment and build before offering a fresh installation")
+    parser.add_argument("--resume", action="store_true", help="With --rescue: resume an interrupted mounted installation without formatting")
     parser.add_argument("--config", type=Path, help="Read machine.toml instead of showing menus")
     parser.add_argument("--check", action="store_true", help="Validate --config only; no keys, passwords or files")
     parser.add_argument("--output", type=Path, default=Path(".deployment"))
@@ -42,6 +46,11 @@ def main(legacy=False):
     if args.hardware_json and args.target is not None:
         parser.error("choose --hardware-json or --target, not both")
     try:
+        if args.rescue:
+            from .rescue import install
+            return install(args)
+        if args.resume or args.prepared:
+            parser.error("--resume/--prepared require --rescue")
         if args.probe:
             print(json.dumps(probe(args.target, args.ssh_config, args.ssh_socket), ensure_ascii=False, indent=2))
             return 0
@@ -76,6 +85,12 @@ def main(legacy=False):
     except (Cancelled, KeyboardInterrupt):
         print("\nОтказано.", file=sys.stderr)
         return 130
+    except subprocess.TimeoutExpired:
+        print("Времето за мрежовата проверка изтече; провери IP адреса и връзката.", file=sys.stderr)
+        return 1
+    except subprocess.CalledProcessError:
+        print("Операцията спря при външна команда. Ако дискът вече е подготвен, повтори #install с --resume; не форматирай отново.", file=sys.stderr)
+        return 1
     except (ConfigError, PreparationError, OSError) as e:
         # OSError may include filenames, but never print file contents or child output.
         message = str(e) if isinstance(e, (ConfigError, PreparationError)) else f"File operation failed ({type(e).__name__})."

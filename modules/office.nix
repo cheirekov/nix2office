@@ -15,6 +15,8 @@ in
 {
   imports = [ ./networking.nix ];
   options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
+    devices.bluetooth = lib.mkEnableOption "Bluetooth and the Blueman desktop controls";
+    devices.unfreeFirmware = lib.mkEnableOption "additional unfree firmware (explicit opt-in)";
     performance.cpuGovernor = lib.mkOption {
       type = lib.types.enum [
         "auto"
@@ -154,6 +156,10 @@ in
       cfg.performance.cpuGovernor != "auto"
     ) cfg.performance.cpuGovernor;
     hardware.enableRedistributableFirmware = true;
+    hardware.enableAllFirmware = cfg.devices.unfreeFirmware;
+    hardware.bluetooth.enable = cfg.devices.bluetooth;
+    hardware.bluetooth.powerOnBoot = cfg.devices.bluetooth;
+    services.blueman.enable = cfg.devices.bluetooth;
     security.rtkit.enable = true;
     services.pipewire = {
       enable = true;
@@ -264,7 +270,20 @@ in
       noto-fonts-color-emoji
     ];
     # Allow only the explicitly selected proprietary browser, not every unfree package.
-    nixpkgs.config.allowUnfreePredicate = pkg: lib.getName pkg == "google-chrome";
+    nixpkgs.config.allowUnfreePredicate =
+      pkg:
+      lib.getName pkg == "google-chrome"
+      || (
+        cfg.devices.unfreeFirmware
+        && builtins.elem (lib.getName pkg) [
+          "broadcom-bt-firmware"
+          "b43-firmware"
+          "b43-firmware-cutter"
+          "xone-dongle-firmware"
+          "facetimehd-calibration"
+          "facetimehd-firmware"
+        ]
+      );
     environment.systemPackages =
       (with pkgs; [
         atril
@@ -279,6 +298,7 @@ in
         htop
         nano
       ])
+      ++ applications.artcraftPackages
       ++ applications.officePackages
       ++ applications.pdfPackages
       ++ lib.optional (cfg.apps.browser != "firefox-esr") applications.browser.package

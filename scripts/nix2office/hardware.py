@@ -20,6 +20,21 @@ printf 'N2O_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scalin
 printf 'N2O_CURRENT_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do test ! -r "$p" || cat "$p"; done | sort -u | tr '\n' ' '; printf '\n'
 printf 'N2O_ARCH='; uname -m
 printf 'N2O_BOOT='; if test -d /sys/firmware/efi; then echo uefi; else echo bios; fi
+printf 'N2O_PCI='; for d in /sys/bus/pci/devices/*; do
+  test -r "$d/class" || continue
+  driver=unbound; test ! -e "$d/driver" || driver=$(basename "$(readlink -f "$d/driver")")
+  printf '%s:%s:%s:%s ' "$(cat "$d/class" | sed s/0x//)" "$(cat "$d/vendor" | sed s/0x//)" "$(cat "$d/device" | sed s/0x//)" "$driver"
+done; printf '\n'
+printf 'N2O_USB='; for d in /sys/bus/usb/devices/*; do
+  test -r "$d/idVendor" || continue
+  printf '%s:%s ' "$(cat "$d/idVendor")" "$(cat "$d/idProduct")"
+done; printf '\n'
+printf 'N2O_BLUETOOTH='; found=0
+for d in /sys/class/bluetooth/hci*; do test ! -e "$d" || found=1; done
+for d in /sys/bus/usb/devices/*; do
+  test -r "$d/bInterfaceClass" || continue
+  if test "$(cat "$d/bInterfaceClass")" = e0 && test "$(cat "$d/bInterfaceSubClass")" = 01 && test "$(cat "$d/bInterfaceProtocol")" = 01; then found=1; fi
+done; echo "$found"
 printf 'N2O_GPU='; for m in /sys/class/drm/card*/device/driver/module; do test ! -e "$m" || basename "$(readlink -f "$m")"; done
 printf '\nN2O_DISKS_JSON\n'
 lsblk --json --bytes --paths --output NAME,TYPE,SIZE,MODEL,TRAN,ROTA,RO,MOUNTPOINTS
@@ -76,7 +91,9 @@ def parse_probe(output, source="local"):
                 "frequency_governors": governors,
                 "frequency_current_governors": sorted(set(fields.get("N2O_CURRENT_GOVERNORS", "").split())),
                 "threads": int(fields["N2O_THREADS"]), "boot_mode": fields["N2O_BOOT"],
-                "initrd_modules": modules, "disks": disks}
+                "initrd_modules": modules, "disks": disks,
+                "pci_ids": fields.get("N2O_PCI", "").split(), "usb_ids": fields.get("N2O_USB", "").split(),
+                "bluetooth_detected": fields.get("N2O_BLUETOOTH") == "1"}
     except (ValueError, KeyError, TypeError):
         raise ConfigError("Hardware inventory could not be parsed; expected Linux /proc, sysfs and a recent lsblk.") from None
 
@@ -125,6 +142,15 @@ def recommendation(inventory):
         notes.append("Открит е radeon: запазваме работещия драйвер и го зареждаме рано за splash; без принудително преминаване към amdgpu.")
     if any(d.get("rotational") for d in eligible_disks(inventory)):
         notes.append("Има механичен диск; SSD би помогнал при отваряне на приложения и swap.")
+    if inventory.get("bluetooth_detected"):
+        notes.append("Bluetooth адаптер е открит: препоръчваме BlueZ + Blueman (меню и системна икона).")
+    pci = inventory.get("pci_ids", [])
+    if any(v.startswith("03") and v.split(":")[1] == "10de" for v in pci):
+        notes.append("NVIDIA GPU: провери PCI ID и поддържаната driver branch преди proprietary драйвер; той не се избира автоматично. Hybrid GPU изисква отделна PRIME конфигурация.")
+    for device in pci:
+        if device.endswith(":unbound") and device[:2] in ("02", "03", "04"):
+            notes.append("Устройство без активен драйвер (class:vendor:device:driver): " + device + ". Провери firmware/driver преди инсталация; unfree firmware е изричен избор.")
+    notes.append("Звук: PipeWire + ALSA/Pulse и графични настройки са включени; HDMI/аналоговият изход се избира в Настройки → Звук.")
     governor = balanced_governor(inventory)
     notes.append("CPU governor: " + governor + ". Performance остава избор за сравнение след инсталация, с повече консумация/топлина; няма обещан процент ускорение.")
     return {"profile": "light" if light else "standard", "cpu_governor": governor, "browser": "firefox-esr", "office": "libreoffice",
@@ -156,6 +182,11 @@ def describe_inventory(inventory):
     print('Честотен драйвер: ' + (', '.join(inventory.get("frequency_drivers", [])) or 'unknown'))
     print('Текущ governor: ' + (', '.join(inventory.get("frequency_current_governors", [])) or 'unknown'))
     print('Графични драйвери: ' + (', '.join(inventory["initrd_modules"]) or 'unknown'))
+    for device in inventory.get("pci_ids", []):
+        if device[:2] in ("02", "03", "04"):
+            print("PCI class:vendor:device:driver: " + device)
+    print("USB IDs: " + (", ".join(inventory.get("usb_ids", [])) or "unknown"))
+    print("Bluetooth: " + ("открит адаптер" if inventory.get("bluetooth_detected") else "не е открит; може да е изключен във firmware"))
     for disk in eligible_disks(inventory):
         print(f'Вътрешен диск: {disk["model"]} | {disk["size_bytes"] / 2**30:.1f} GiB | {"HDD" if disk["rotational"] else "SSD/flash"}')
     print('Препоръка: ' + advice['profile'] + ', Firefox ESR, LibreOffice; PDF: ' + advice['pdf_editor'])

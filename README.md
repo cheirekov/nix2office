@@ -34,6 +34,26 @@ for one folder, with the selected Workgroup and a trusted LAN. WireGuard uses
 NetworkManager; optional Tailscale has Trayscale GUI; ZeroTier uses its daemon
 and admin CLI. Account enrollment remains interactive after installation.
 
+## Full installation wizard
+
+From a private working directory on the administrative Linux computer:
+
+```sh
+nix run --refresh --option builders '' github:cheirekov/nix2office#install
+```
+
+Enter the rescue IP, compare its SSH fingerprint on the console, enter the rescue
+password, and follow the hardware/settings menus. The wizard builds locally,
+checks the disk, then asks permission and requires the full disk ID before erasing.
+`--prepared` reuses a saved deployment for a new installation; `--resume` continues
+an interrupted installation on an already mounted target without formatting.
+See the [complete Bulgarian beginner guide](docs/rescue-install-bg.md).
+
+Experimental ArtCraft is an optional additional set: **WordCraft, GridCraft,
+DeckCraft and PdfCraft only**, with pinned upstream binaries and hashes. Select
+`apps.artcraft = true` in `machine.toml`, or build `.#artcraft` separately. It does
+not replace the selected main office suite or its default document handlers.
+
 ## Start with the assistant
 
 ```sh

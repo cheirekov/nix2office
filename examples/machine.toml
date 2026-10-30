@@ -20,6 +20,8 @@ browser = "firefox-esr" # firefox-esr, chromium, brave, google-chrome
 office = "libreoffice" # libreoffice, onlyoffice, none
 pdf_editor = "pdfarranger" # none, pdfarranger, xournalpp, both
 nextcloud = true
+# Experimental additional WordCraft/GridCraft/DeckCraft/PdfCraft set:
+artcraft = false
 
 [keyboard]
 bulgarian = "phonetic" # phonetic or bds, alongside US English
@@ -55,3 +57,8 @@ memory_mib = 0
 threads = 0
 boot_mode = "unknown" # detected mode; root boot_mode above is the chosen mode
 initrd_modules = [] # detected KMS drivers, e.g. ["i915"]
+
+# BlueZ + Blueman when a Bluetooth adapter is present. Extra unfree firmware is opt-in.
+[devices]
+bluetooth = false
+unfree_firmware = false

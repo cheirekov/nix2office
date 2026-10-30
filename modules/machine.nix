@@ -24,6 +24,7 @@ let
       "vpn"
       "admin"
       "hardware"
+      "devices"
     ];
     user = [
       "name"
@@ -31,11 +32,16 @@ let
       "email"
     ];
     performance = [ "cpu_governor" ];
+    devices = [
+      "bluetooth"
+      "unfree_firmware"
+    ];
     apps = [
       "browser"
       "office"
       "pdf_editor"
       "nextcloud"
+      "artcraft"
     ];
     keyboard = [ "bulgarian" ];
     sharing = [
@@ -68,10 +74,14 @@ let
       "threads"
       "boot_mode"
       "initrd_modules"
+      "pci_ids"
+      "usb_ids"
+      "bluetooth_detected"
     ];
   };
   sections = {
     root = m;
+    devices = m.devices or { };
     user = m.user;
     keyboard = m.keyboard or { };
     inherit
@@ -140,6 +150,7 @@ in
       pdfEditor =
         apps.pdf_editor or (if (m.profile or "light") == "light" then "pdfarranger" else "both");
       nextcloud = apps.nextcloud or true;
+      artcraft = apps.artcraft or false;
     };
     sharing = {
       mode = sharing.mode or "client";
@@ -158,6 +169,10 @@ in
     adminAuthorizedKeys = lib.optional ((admin.ssh_public_key or "") != "") admin.ssh_public_key;
     hardware.cpuVendor = hardware.cpu_vendor or "unknown";
     performance.cpuGovernor = performance.cpu_governor or "auto";
+  };
+  nix2office.devices = {
+    bluetooth = (m.devices or { }).bluetooth or false;
+    unfreeFirmware = (m.devices or { }).unfree_firmware or false;
   };
   boot.initrd.kernelModules = hardware.initrd_modules or [ ];
 }

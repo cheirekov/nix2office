@@ -23,6 +23,8 @@ args = p.parse_args()
 deploy = args.deployment.resolve()
 system = (deploy / "result").resolve(strict=True)
 disko = (deploy / "result-1").resolve(strict=True)
+if not (deploy / "keys/host.age").is_file():
+    raise SystemExit("Missing private host age key; stop before changing the disk")
 if not args.disk.startswith("/dev/disk/by-id/") or args.disk not in disko.read_text():
     raise SystemExit("Disk must be a by-id path matching the built disko script")
 if not (system / "bin/switch-to-configuration").exists():
@@ -68,7 +70,9 @@ def transfer(output, target_store):
                               " ".join(map(quote, paths[start:start + 128])),
                               capture_output=True, text=True).stdout.splitlines())
     if not missing:
+        print("Target already has the complete closure", flush=True)
         return
+    print(f"Transferring {len(missing)} missing store paths of {len(paths)} to {target_store}", flush=True)
     exporter = subprocess.Popen(["nix-store", "--export", *missing], stdout=subprocess.PIPE)
     compressor = subprocess.Popen(["gzip", "-1"], stdin=exporter.stdout, stdout=subprocess.PIPE)
     exporter.stdout.close()
@@ -89,7 +93,9 @@ if not args.resume:
 remote("set -eu; d=$(readlink -f " + quote(args.disk) + "); "
        "s=$(findmnt -n -o SOURCE /mnt); "
        "test \"$(lsblk -dn -o PKNAME \"$s\")\" = \"$(basename \"$d\")\"")
-remote("s=$(readlink -f /dev/disk/by-partlabel/disk-system-swap); "
+remote("set -eu; s=$(readlink -f /dev/disk/by-partlabel/disk-system-swap); "
+       "d=$(readlink -f " + quote(args.disk) + "); "
+       "test \"$(lsblk -dn -o PKNAME \"$s\")\" = \"$(basename \"$d\")\"; "
        "swapon --noheadings --raw --show=NAME | grep -qxF \"$s\" || sudo -n swapon \"$s\"")
 print("Streaming the system closure directly to the SSD store", flush=True)
 transfer(system, "/mnt")

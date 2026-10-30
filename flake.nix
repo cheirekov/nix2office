@@ -71,6 +71,8 @@
             coreutils
             gawk
             gnused
+            gzip
+            nix
           ];
           text = ''
             export NIX2OFFICE_SOURCE=${
@@ -79,6 +81,26 @@
             exec ${python}/bin/python ${./scripts}/configure.py "$@"
           '';
         };
+      packages.x86_64-linux.artcraft = nixpkgs.legacyPackages.x86_64-linux.symlinkJoin {
+        name = "artcraft-office-experimental";
+        paths = builtins.attrValues (
+          import ./packages/artcraft.nix { pkgs = nixpkgs.legacyPackages.x86_64-linux; }
+        );
+      };
+      packages.x86_64-linux.install =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        in
+        pkgs.writeShellApplication {
+          name = "nix2office-install";
+          text = ''
+            exec ${self.packages.x86_64-linux.configure}/bin/nix2office-configure --rescue "$@"
+          '';
+        };
+      apps.x86_64-linux.install = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.install}/bin/nix2office-install";
+      };
       apps.x86_64-linux.configure = {
         type = "app";
         program = "${self.packages.x86_64-linux.configure}/bin/nix2office-configure";

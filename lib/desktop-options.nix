@@ -5,7 +5,7 @@ in
 {
   user = {
     name = mkOption {
-      type = types.strMatching "[a-z_][a-z0-9_-]{0,30}";
+      type = types.strMatching "[a-z_][a-z0-9_.-]{0,30}";
       default = "office";
       description = "Unix login name; distinct from the person's displayed full name.";
     };
@@ -50,6 +50,7 @@ in
       default = "none";
       description = "Optional PDF page tools and/or annotation editor; Atril remains the reader.";
     };
+    artcraft = lib.mkEnableOption "experimental WordCraft, GridCraft, DeckCraft and PdfCraft alongside the main office suite";
     nextcloud = mkOption {
       type = types.bool;
       default = true;

@@ -78,3 +78,20 @@ packages remain in use; the helper does not switch the entire system to a local
 References: [kernel CPU frequency governors](https://www.kernel.org/doc/html/latest/admin-guide/pm/cpufreq.html),
 [AMD P-state requirements](https://www.kernel.org/doc/html/latest/admin-guide/pm/amd-pstate.html),
 [Radeon/AMDGPU module parameters](https://www.kernel.org/doc/html/latest/gpu/amdgpu/module-parameters.html).
+
+## Peripheral discovery
+
+The probe records PCI class/vendor/device IDs and bound driver names, USB IDs,
+and Bluetooth presence from sysfs (including standard USB Bluetooth interfaces).
+It flags unbound graphics, audio and network controllers and NVIDIA graphics for
+review. This is detection of the rescue environment, not proof that every optional
+feature will work after installation. Unknown/proprietary drivers and hybrid PRIME
+need model-specific review. The assistant does not guess a supported NVIDIA branch.
+
+Redistributable firmware stays enabled. Additional unfree firmware is offered as
+an explicit opt-in and is not a substitute for a missing kernel driver. Detected
+Bluetooth recommends BlueZ and Blueman. PipeWire already supplies audio; select
+HDMI/analog output in the sound GUI. WirePlumber remembers that personal choice.
+
+See [rescue installation](rescue-install-bg.md) and the future
+[cache-first transport plan](cache-install-plan.md).

@@ -1,3 +1,8 @@
+For the complete rescue → hardware → configuration → build → installation flow,
+use `nix run github:cheirekov/nix2office#install` and the
+[Bulgarian step-by-step guide](rescue-install-bg.md). `#configure` below retains
+its preparation-only behavior.
+
 # Configuration assistant
 
 The assistant prepares a private flake from an editable `machine.toml`. It does
@@ -207,3 +212,24 @@ arguments still work.
 
 For future backup of mutable personal preferences, see
 [Personal settings and recovery](personal-settings.md). No backup job is enabled.
+
+## New hardware and access controls
+
+The admin SSH question defaults to Yes. Public keys can be selected from a reachable
+SSH agent (including GPG/YubiKey), pasted or loaded from a `.pub` file. Listing
+public keys does not sign or change hardware touch policies. Check the displayed
+fingerprint; a `cardno:` comment alone is not proof of hardware backing. Declining
+SSH prints an explicit warning and requires another confirmation.
+
+User logins accept internal dots, for example `yordan.cheyrekov`. VPN checkboxes
+can all be cleared; clients can be added by editing TOML and rebuilding later.
+
+`[devices].bluetooth` enables BlueZ/Blueman; detected Bluetooth sets the wizard's
+initial recommendation. `unfree_firmware` is an explicit opt-in to the additional
+NixOS firmware set. Redistributable firmware is always included. PCI class/vendor/device
+IDs, bound drivers and USB IDs are collected without extra tooling. Unbound network,
+graphics or audio controllers are reported for review. NVIDIA is flagged for PCI-ID/driver
+branch/PRIME review, with no automatic proprietary driver selection.
+
+`[apps].artcraft = true` adds pinned experimental WordCraft, GridCraft, DeckCraft and
+PdfCraft packages alongside the selected main office suite. It includes no Launcher.

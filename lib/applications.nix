@@ -38,6 +38,9 @@ in
       [ (import ../packages/libreoffice-bg.nix { inherit pkgs; }) ]
     else
       pkgs.lib.optional (apps.office == "onlyoffice") pkgs.onlyoffice-desktopeditors;
+  artcraftPackages = pkgs.lib.optionals (apps.artcraft or false) (
+    builtins.attrValues (import ../packages/artcraft.nix { inherit pkgs; })
+  );
   pdfPackages =
     pkgs.lib.optional (builtins.elem apps.pdfEditor [
       "pdfarranger"

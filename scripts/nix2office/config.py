@@ -21,15 +21,16 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
+    "devices": {"bluetooth": False, "unfree_firmware": False},
     "user": {"name": "office", "full_name": "Офис", "email": ""},
-    "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True},
+    "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True, "artcraft": False},
     "keyboard": {"bulgarian": "phonetic"},
     "sharing": {"mode": "client", "workgroup": "WORKGROUP", "folder": "Shared", "network": "192.0.2.0/24", "read_only": False},
     "vpn": {"wireguard": True, "tailscale": False, "zerotier": False, "zerotier_networks": []},
     "admin": {"network": "192.0.2.0/24", "ssh_public_key": ""},
     "hardware": {"cpu": "", "cpu_vendor": "unknown", "cpu_family": 0, "cpu_model": 0, "cpu_max_mhz": 0,
                  "frequency_drivers": [], "frequency_governors": [], "frequency_current_governors": [],
-                 "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": []},
+                 "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": [], "pci_ids": [], "usb_ids": [], "bluetooth_detected": False},
 }
 BROWSERS = ("firefox-esr", "chromium", "brave", "google-chrome")
 OFFICES = ("libreoffice", "onlyoffice", "none")
@@ -106,7 +107,7 @@ def validate_machine(raw):
         if m[field] not in choices:
             raise ConfigError(f"{field}: choose from {', '.join(choices)}.")
     user = m["user"]
-    pattern(user["name"], "user.name", r"[a-z_][a-z0-9_-]{0,30}")
+    pattern(user["name"], "user.name", r"[a-z_][a-z0-9_.-]{0,30}")
     if user["name"] in RESERVED_USERS or user["name"].startswith(("nixbld", "systemd-")):
         raise ConfigError("user.name: choose a separate desktop account, not a reserved system/admin name.")
     text(user["full_name"], "user.full_name", 128)
@@ -136,7 +137,7 @@ def validate_machine(raw):
         except ValueError:
             raise ConfigError(f"{field}: expected a specific IPv4 network CIDR, not every address.") from None
     validate_public_key(m["admin"]["ssh_public_key"])
-    for field, value in (("boot_splash", m["boot_splash"]), ("apps.nextcloud", m["apps"]["nextcloud"]),
+    for field, value in (("boot_splash", m["boot_splash"]), ("apps.nextcloud", m["apps"]["nextcloud"]), ("apps.artcraft", m["apps"]["artcraft"]),
                          ("sharing.read_only", sharing["read_only"]),
                          *(("vpn." + k, m["vpn"][k]) for k in ("wireguard", "tailscale", "zerotier"))):
         if type(value) is not bool:
@@ -146,7 +147,15 @@ def validate_machine(raw):
         raise ConfigError("vpn.zerotier_networks: expected a list of 16-digit hexadecimal network IDs.")
     if networks and not m["vpn"]["zerotier"]:
         raise ConfigError("Enable vpn.zerotier before supplying its network IDs.")
+    for key, value in m["devices"].items():
+        if type(value) is not bool:
+            raise ConfigError(f"devices.{key}: expected true or false.")
     h = m["hardware"]
+    if type(h["bluetooth_detected"]) is not bool:
+        raise ConfigError("hardware.bluetooth_detected: expected true or false.")
+    for key, regex in (("pci_ids", r"[0-9a-f]{6}:[0-9a-f]{4}:[0-9a-f]{4}:[A-Za-z0-9_-]+"), ("usb_ids", r"[0-9a-f]{4}:[0-9a-f]{4}")):
+        if not isinstance(h[key], list) or any(not isinstance(v, str) or not re.fullmatch(regex, v) for v in h[key]):
+            raise ConfigError(f"hardware.{key}: invalid device inventory.")
     text(h["cpu"], "hardware.cpu")
     if h["cpu_vendor"] not in ("intel", "amd", "unknown") or h["boot_mode"] not in ("bios", "uefi", "unknown"):
         raise ConfigError("hardware: invalid CPU vendor or detected boot mode.")
