@@ -55,6 +55,13 @@ or together with LibreOffice/ONLYOFFICE. In `machine.toml`, set `apps.artcraft =
 (and `apps.office = "none"` for ArtCraft alone), or build `.#artcraft` separately.
 When combined, the main suite retains its default document handlers.
 
+## Maintain an installed machine
+
+Use `nix run github:cheirekov/nix2office#maintain -- --edit` to choose additional
+applications and fonts and build locally. Remote activation requires `--apply`,
+verified SSH trust, typed hostname confirmation and the admin sudo password.
+See the [Bulgarian maintenance guide](docs/maintenance-bg.md).
+
 ## Start with the assistant
 
 ```sh

@@ -3,7 +3,7 @@ import copy
 import json
 from pathlib import Path
 
-from .config import ConfigError, DEFAULTS, validate_machine, validate_public_key
+from .config import CATALOG, ConfigError, DEFAULTS, validate_machine, validate_public_key
 from .deployment import PreparationError, check_destination, summary
 from .ssh_keys import choose_public_key
 from .hardware import describe_inventory, eligible_disks, machine_hardware, probe
@@ -152,6 +152,9 @@ def wizard(args):
         ("xournalpp", "Xournal++ — писане и бележки върху PDF"),
         ("both", "PDF Arranger + Xournal++"),
     ], m["apps"]["pdf_editor"])
+    m["apps"]["extra"] = ask(q.checkbox("Допълнителни програми (Space за избор; може без отметки):", choices=[q.Choice(v["label"], value=k) for k, v in CATALOG.items()]))
+    m["fonts"]["office_fallbacks"] = ask(q.confirm("Carlito/Caladea — съвместими заместители за Calibri/Cambria?", default=True))
+    m["fonts"]["microsoft_core"] = ask(q.confirm("Microsoft Core Fonts — Times New Roman, Arial и др. (unfree, със собствен лиценз)?", default=False))
     m["apps"]["nextcloud"] = ask(q.confirm("Nextcloud клиент с автоматично стартиране?", default=True))
     m["keyboard"]["bulgarian"] = select("Българска клавиатура (плюс английска):", [("phonetic", "Фонетична"), ("bds", "БДС")], "phonetic")
     m["boot_splash"] = ask(q.confirm("Графичен splash при зареждане?", default=True))

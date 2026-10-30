@@ -15,6 +15,12 @@ in
 {
   imports = [ ./networking.nix ];
   options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
+    fonts.microsoftCore = lib.mkEnableOption "Microsoft core fonts (unfreeRedistributable)";
+    fonts.officeFallbacks = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Carlito and Caladea office font fallbacks.";
+    };
     devices.bluetooth = lib.mkEnableOption "Bluetooth and the Blueman desktop controls";
     devices.unfreeFirmware = lib.mkEnableOption "additional unfree firmware (explicit opt-in)";
     performance.cpuGovernor = lib.mkOption {
@@ -264,16 +270,24 @@ in
     };
     boot.kernel.sysctl."vm.swappiness" = 60;
 
-    fonts.packages = with pkgs; [
-      liberation_ttf
-      dejavu_fonts
-      noto-fonts
-      noto-fonts-color-emoji
-    ];
+    fonts.packages =
+      with pkgs;
+      [
+        liberation_ttf
+        dejavu_fonts
+        noto-fonts
+        noto-fonts-color-emoji
+      ]
+      ++ lib.optionals cfg.fonts.officeFallbacks [
+        pkgs.carlito
+        pkgs.caladea
+      ]
+      ++ lib.optional cfg.fonts.microsoftCore pkgs.corefonts;
     # Allow only the explicitly selected proprietary browser, not every unfree package.
     nixpkgs.config.allowUnfreePredicate =
       pkg:
       lib.getName pkg == "google-chrome"
+      || (cfg.fonts.microsoftCore && lib.getName pkg == "corefonts")
       || (
         cfg.devices.unfreeFirmware
         && builtins.elem (lib.getName pkg) [
@@ -299,6 +313,7 @@ in
         htop
         nano
       ])
+      ++ applications.extraPackages
       ++ applications.artcraftPackages
       ++ applications.officePackages
       ++ applications.pdfPackages

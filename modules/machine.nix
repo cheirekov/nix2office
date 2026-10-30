@@ -25,6 +25,7 @@ let
       "admin"
       "hardware"
       "devices"
+      "fonts"
     ];
     user = [
       "name"
@@ -32,6 +33,10 @@ let
       "email"
     ];
     performance = [ "cpu_governor" ];
+    fonts = [
+      "microsoft_core"
+      "office_fallbacks"
+    ];
     devices = [
       "bluetooth"
       "unfree_firmware"
@@ -42,6 +47,7 @@ let
       "pdf_editor"
       "nextcloud"
       "artcraft"
+      "extra"
     ];
     keyboard = [ "bulgarian" ];
     sharing = [
@@ -82,6 +88,7 @@ let
   sections = {
     root = m;
     devices = m.devices or { };
+    fonts = m.fonts or { };
     user = m.user;
     keyboard = m.keyboard or { };
     inherit
@@ -135,6 +142,8 @@ in
     ];
   networking.hostName = m.hostname;
   nix2office = {
+    fonts.microsoftCore = (m.fonts or { }).microsoft_core or false;
+    fonts.officeFallbacks = (m.fonts or { }).office_fallbacks or true;
     diskDevice = m.disk;
     bootMode = m.boot_mode;
     bootSplash.enable = m.boot_splash or true;
@@ -151,6 +160,7 @@ in
         apps.pdf_editor or (if (m.profile or "light") == "light" then "pdfarranger" else "both");
       nextcloud = apps.nextcloud or true;
       artcraft = apps.artcraft or false;
+      extra = apps.extra or [ ];
     };
     sharing = {
       mode = sharing.mode or "client";

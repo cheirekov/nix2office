@@ -81,6 +81,32 @@
             exec ${python}/bin/python ${./scripts}/configure.py "$@"
           '';
         };
+      packages.x86_64-linux.maintain =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          python = pkgs.python3.withPackages (p: [ p.questionary ]);
+        in
+        pkgs.writeShellApplication {
+          name = "nix2office-maintain";
+          runtimeInputs = [
+            python
+            pkgs.nix
+            pkgs.git
+            pkgs.openssh
+            pkgs.gzip
+            pkgs.coreutils
+          ];
+          text = ''
+            export NIX2OFFICE_SOURCE=${
+              nixpkgs.lib.escapeShellArg (if self ? rev then "github:cheirekov/nix2office/${self.rev}" else "")
+            }
+            exec ${python}/bin/python ${./scripts}/maintain.py "$@"
+          '';
+        };
+      apps.x86_64-linux.maintain = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.maintain}/bin/nix2office-maintain";
+      };
       packages.x86_64-linux.artcraft = nixpkgs.legacyPackages.x86_64-linux.symlinkJoin {
         name = "artcraft-office-experimental";
         paths = builtins.attrValues (

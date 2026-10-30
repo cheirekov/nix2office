@@ -1,0 +1,8 @@
+{
+  "remmina": {"label": "Remmina — отдалечен работен плот (RDP/VNC/SSH)", "package": "remmina"},
+  "vlc": {"label": "VLC — видео и музика", "package": "vlc"},
+  "gimp": {"label": "GIMP — обработка на изображения", "package": "gimp"},
+  "inkscape": {"label": "Inkscape — векторна графика", "package": "inkscape"},
+  "keepassxc": {"label": "KeePassXC — мениджър на пароли", "package": "keepassxc"},
+  "thunderbird": {"label": "Thunderbird — електронна поща", "package": "thunderbird"}
+}

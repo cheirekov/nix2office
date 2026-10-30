@@ -21,6 +21,15 @@ in
     };
   };
   apps = {
+    extra = mkOption {
+      type = types.listOf (
+        types.enum (
+          builtins.attrNames (builtins.fromJSON (builtins.readFile ../scripts/nix2office/catalog.json))
+        )
+      );
+      default = [ ];
+      description = "Additional applications from the office catalog.";
+    };
     browser = mkOption {
       type = types.enum [
         "firefox-esr"

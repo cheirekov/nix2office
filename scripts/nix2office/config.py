@@ -13,6 +13,8 @@ class ConfigError(ValueError):
     pass
 
 
+CATALOG = json.loads(Path(__file__).with_name("catalog.json").read_text())
+
 DEFAULTS = {
     "version": 1,
     "hostname": "office-pc",
@@ -21,9 +23,10 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
+    "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
     "user": {"name": "office", "full_name": "Офис", "email": ""},
-    "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True, "artcraft": False},
+    "apps": {"browser": "firefox-esr", "office": "libreoffice", "pdf_editor": "pdfarranger", "nextcloud": True, "artcraft": False, "extra": []},
     "keyboard": {"bulgarian": "phonetic"},
     "sharing": {"mode": "client", "workgroup": "WORKGROUP", "folder": "Shared", "network": "192.0.2.0/24", "read_only": False},
     "vpn": {"wireguard": True, "tailscale": False, "zerotier": False, "zerotier_networks": []},
@@ -121,6 +124,12 @@ def validate_machine(raw):
             raise ConfigError(f"apps.{key}: choose from {', '.join(choices)}.")
     if m["keyboard"]["bulgarian"] not in ("phonetic", "bds"):
         raise ConfigError("keyboard.bulgarian: choose phonetic or bds.")
+    extra = m["apps"]["extra"]
+    if not isinstance(extra, list) or any(not isinstance(x, str) or x not in CATALOG for x in extra) or len(set(extra)) != len(extra):
+        raise ConfigError("apps.extra: choose unique application IDs from the supported catalog.")
+    for key, value in m["fonts"].items():
+        if type(value) is not bool:
+            raise ConfigError(f"fonts.{key}: expected true or false.")
     sharing = m["sharing"]
     if sharing["mode"] not in ("client", "both"):
         raise ConfigError("sharing.mode: choose client or both.")

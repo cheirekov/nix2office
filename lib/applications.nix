@@ -33,6 +33,10 @@ let
 in
 {
   browser = browsers.${apps.browser};
+  extraPackages = map (
+    name:
+    pkgs.${(builtins.fromJSON (builtins.readFile ../scripts/nix2office/catalog.json)).${name}.package}
+  ) (apps.extra or [ ]);
   officePackages =
     if apps.office == "libreoffice" then
       [ (import ../packages/libreoffice-bg.nix { inherit pkgs; }) ]

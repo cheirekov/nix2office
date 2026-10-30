@@ -52,6 +52,8 @@ let
               nix2office = {
                 adminNetwork = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
                 adminAuthorizedKeys = lib.mkForce [ "ssh-ed25519 AAAA evaluation-only" ];
+                fonts.microsoftCore = lib.mkForce variant.services;
+                apps.extra = lib.mkForce (lib.optional variant.services "remmina");
                 devices.bluetooth = lib.mkForce variant.services;
                 devices.unfreeFirmware = lib.mkForce variant.services;
                 apps.artcraft = lib.mkForce variant.services;
@@ -84,6 +86,10 @@ let
     assert c.hardware.bluetooth.enable == variant.services;
     assert c.services.blueman.enable == variant.services;
     assert c.hardware.enableAllFirmware == variant.services;
+    assert builtins.elem "carlito" (map lib.getName c.fonts.packages);
+    assert builtins.elem "caladea" (map lib.getName c.fonts.packages);
+    assert (builtins.elem "corefonts" (map lib.getName c.fonts.packages)) == variant.services;
+    assert (builtins.elem "remmina" (map lib.getName c.environment.systemPackages)) == variant.services;
     assert c.services.openssh.enable;
     assert !c.services.openssh.openFirewall;
     assert !c.services.openssh.settings.PasswordAuthentication;
