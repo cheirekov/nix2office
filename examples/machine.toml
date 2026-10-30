@@ -15,6 +15,9 @@ name = "maria" # Linux login and home directory
 full_name = "Мария Димитрова" # displayed name, independent of login
 email = "maria@example.org" # optional metadata, no automatic account setup
 
+[tools]
+comma = false # Ready small database; separate pinned temporary nixpkgs
+
 [fonts]
 microsoft_core = false # Times New Roman, Arial, etc.; explicit unfree selection
 office_fallbacks = true # Carlito and Caladea

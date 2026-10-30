@@ -2,6 +2,7 @@
   description = "A lightweight Bulgarian NixOS office desktop with a familiar layout";
 
   inputs = {
+    nix-index-database.url = "github:nix-community/nix-index-database";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
@@ -26,6 +27,7 @@
           imports = [
             inputs.home-manager.nixosModules.home-manager
             inputs.sops-nix.nixosModules.sops
+            (import ./modules/comma.nix inputs.nix-index-database)
             ./modules/office.nix
           ];
         };
@@ -106,6 +108,14 @@
       apps.x86_64-linux.maintain = {
         type = "app";
         program = "${self.packages.x86_64-linux.maintain}/bin/nix2office-maintain";
+      };
+      packages.x86_64-linux.comma = import ./packages/comma.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        database = inputs.nix-index-database;
+      };
+      apps.x86_64-linux.comma = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.comma}/bin/comma";
       };
       packages.x86_64-linux.artcraft = nixpkgs.legacyPackages.x86_64-linux.symlinkJoin {
         name = "artcraft-office-experimental";

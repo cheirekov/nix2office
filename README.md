@@ -258,3 +258,5 @@ nix eval --impure --json --expr 'import ./tests/evaluate.nix { root = toString .
 ```
 
 MIT licensed. Application packages retain their own licenses.
+
+Допълнително: [Comma и поддръжка](docs/maintenance-bg.md#comma-временни-програми-без-локално-генериране-на-индекс), [предложение за RustDesk](docs/remote-support-bg.md).

@@ -26,6 +26,7 @@ let
       "hardware"
       "devices"
       "fonts"
+      "tools"
     ];
     user = [
       "name"
@@ -33,6 +34,7 @@ let
       "email"
     ];
     performance = [ "cpu_governor" ];
+    tools = [ "comma" ];
     fonts = [
       "microsoft_core"
       "office_fallbacks"
@@ -89,6 +91,7 @@ let
     root = m;
     devices = m.devices or { };
     fonts = m.fonts or { };
+    tools = m.tools or { };
     user = m.user;
     keyboard = m.keyboard or { };
     inherit
@@ -142,6 +145,7 @@ in
     ];
   networking.hostName = m.hostname;
   nix2office = {
+    tools.comma.enable = (m.tools or { }).comma or false;
     fonts.microsoftCore = (m.fonts or { }).microsoft_core or false;
     fonts.officeFallbacks = (m.fonts or { }).office_fallbacks or true;
     diskDevice = m.disk;

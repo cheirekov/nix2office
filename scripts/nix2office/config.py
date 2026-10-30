@@ -23,6 +23,7 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
+    "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
     "user": {"name": "office", "full_name": "Офис", "email": ""},
@@ -127,6 +128,8 @@ def validate_machine(raw):
     extra = m["apps"]["extra"]
     if not isinstance(extra, list) or any(not isinstance(x, str) or x not in CATALOG for x in extra) or len(set(extra)) != len(extra):
         raise ConfigError("apps.extra: choose unique application IDs from the supported catalog.")
+    if type(m["tools"]["comma"]) is not bool:
+        raise ConfigError("tools.comma: expected true or false.")
     for key, value in m["fonts"].items():
         if type(value) is not bool:
             raise ConfigError(f"fonts.{key}: expected true or false.")

@@ -46,6 +46,16 @@ class SchemaTests(unittest.TestCase):
     def test_public_template(self):
         validate_machine(tomllib.loads((ROOT / "examples/machine.toml").read_text()))
 
+    def test_comma_optional_and_boolean(self):
+        m = machine()
+        self.assertFalse(m["tools"]["comma"])
+        m["tools"]["comma"] = True
+        self.assertTrue(validate_machine(tomllib.loads(dump_machine(m)))["tools"]["comma"])
+        for value in ("true", 1, None):
+            m["tools"]["comma"] = value
+            with self.assertRaises(ConfigError):
+                validate_machine(m)
+
     def test_reject_bad_inputs_before_writes(self):
         cases = [("user", "password", "DO_NOT_ECHO"), ("user", "name", "admin"), ("user", "full_name", "Maria:root"),
                  ("sharing", "folder", "../Documents"), ("sharing", "folder", "global"), ("sharing", "network", "0.0.0.0/0"),

@@ -59,6 +59,7 @@ def edit(machine):
         return result
     machine['apps']['extra'] = ask(q.checkbox('Допълнителни програми (Space за избор):', choices=[
         q.Choice(v['label'], value=k, checked=k in machine['apps']['extra']) for k,v in CATALOG.items()]))
+    machine["tools"]["comma"] = ask(q.confirm("Comma с готов малък индекс (отделен фиксиран nixpkgs)?", default=machine["tools"]["comma"]))
     for key,label in [('office_fallbacks','Carlito/Caladea'),('microsoft_core','Microsoft Core Fonts (unfree, собствен лиценз)')]:
         machine['fonts'][key] = ask(q.confirm(label+'?', default=machine['fonts'][key]))
     return machine
@@ -67,7 +68,7 @@ def edit(machine):
 def main():
     p=argparse.ArgumentParser(description='Maintain an installed Nix2office machine: optional menus, local build, explicit remote activation. No partitioning or reinstall.')
     p.add_argument('--deployment',type=Path,default=Path('.deployment'))
-    p.add_argument('--edit',action='store_true',help='Choose additional applications and fonts, preserving all other settings/secrets')
+    p.add_argument('--edit',action='store_true',help='Choose additional applications, comma and fonts, preserving other settings/secrets')
     p.add_argument('--revision',help='Public Nix2office Git revision (40 hex); default: this helper revision')
     p.add_argument('--apply',action='store_true',help='After build, verify installed target and ask before activation')
     p.add_argument('--target',help='admin@HOST; needed with --apply')
