@@ -316,6 +316,7 @@ in
         htop
         nano
       ])
+      ++ [ (import ../packages/diagnose.nix { inherit pkgs; }) ]
       ++ applications.extraPackages
       ++ applications.artcraftPackages
       ++ applications.officePackages

@@ -152,6 +152,26 @@ Always address the deployment as `./.deployment`, or its Git URL. **Never use
 store. Never add private files with `git add -f`. Public forks and CI need no
 decryption keys and must not build a source tree containing ignored secrets.
 
+## Development roadmap and checks
+
+[Пътна карта на български](docs/roadmap-bg.md) · [Среда за разработка и обновяване на fetcher-и](docs/development-bg.md).
+
+Run the same checks as CI (Python tests, four configuration evaluations, formatting and deadnix):
+
+```sh
+nix flake check --no-write-lock-file --option builders ''
+```
+
+The existing manual checks below remain available. Optional direnv support is
+provided by `.envrc`: review it and run `direnv allow`, or keep using `nix develop`.
+
+Read-only post-install checks are available as `nix2office-diagnose` in new
+systems, or `nix run .#diagnose`. Use `--json` or `--output FILE` for a private
+JSON report. Run it inside the office user's graphical session for graphics and
+sound checks; inaccessible data is reported as unknown. See the Bulgarian
+[hardware and diagnostics guide](docs/hardware-bg.md), including the opt-in
+Facter comparison from the current pin.
+
 ## Evaluate and build
 
 Replace `office-pc` with your TOML hostname (and `.deployment` with your output).

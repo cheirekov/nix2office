@@ -1,5 +1,7 @@
 # Personal settings and recovery: proposed next step
 
+Scheduled as M6 in the [project roadmap](roadmap-bg.md). Not implemented by M0/M1.
+
 Nix and Home Manager reproduce the declared baseline. They do not restore
 personal data, browser sessions or application accounts. The current assistant
 does **not** create backups or scheduled jobs; this document defines a future

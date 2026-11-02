@@ -1,7 +1,7 @@
 # Evaluate integrations without building every browser or activating a machine.
-{ root }:
+{ root, flake ? builtins.getFlake root }:
 let
-  f = builtins.getFlake root;
+  f = flake;
   lib = f.inputs.nixpkgs.lib;
   cases = {
     firefox = {

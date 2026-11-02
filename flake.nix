@@ -20,7 +20,76 @@
 
   outputs =
     inputs@{ self, nixpkgs, ... }:
+    let
+      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      developmentPython = pkgs.python3.withPackages (p: [
+        p.questionary
+        p.toml
+        p.pynacl
+      ]);
+      developmentTools = with pkgs; [
+        developmentPython
+        age
+        sops
+        mkpasswd
+        nixfmt
+        deadnix
+        nurl
+        git
+        openssh
+      ];
+    in
     {
+      checks.x86_64-linux = {
+        python-tests =
+          pkgs.runCommand "nix2office-python-tests"
+            {
+              nativeBuildInputs = developmentTools;
+            }
+            ''
+                    export HOME="$TMPDIR/home"
+              export NIX2OFFICE_REMOTE_SUPPORT_EVALUATION=${
+                pkgs.writeText "remote-support-evaluation.json" (
+                  # Only evaluation facts, not runtime dependencies: do not build RustDesk.
+                  builtins.unsafeDiscardStringContext (
+                    builtins.toJSON (import ./tests/remote-support.nix { flake = self; })
+                  )
+                )
+              }
+                    mkdir -p "$HOME"
+                    cp -r ${self} source
+                    chmod -R u+w source
+                    cd source
+                  # The source filter excludes .git; the deployment-boundary test
+                  # deliberately needs a checkout, recreated without private data.
+                  git init -q
+                    python3 -m unittest discover -s tests -v
+                    touch "$out"
+            '';
+        nixos-eval = builtins.deepSeq (import ./tests/evaluate.nix {
+          root = self.outPath;
+          flake = self;
+        }) (pkgs.runCommand "nix2office-nixos-eval" { } ''touch "$out"'');
+        formatting =
+          pkgs.runCommand "nix2office-formatting"
+            {
+              nativeBuildInputs = [ pkgs.nixfmt ];
+            }
+            ''
+              cd ${self}
+              nixfmt --check flake.nix modules/*.nix home/*.nix lib/*.nix packages/*.nix examples/*.nix
+              touch "$out"
+            '';
+        deadnix =
+          pkgs.runCommand "nix2office-deadnix"
+            {
+              nativeBuildInputs = [ pkgs.deadnix ];
+            }
+            ''
+              deadnix --fail ${self}
+              touch "$out"
+            '';
+      };
       nixosModules = {
         default = self.nixosModules.office;
         office = {
@@ -55,6 +124,18 @@
         ];
       };
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
+      packages.x86_64-linux.diagnose = import ./packages/diagnose.nix { inherit pkgs; };
+      apps.x86_64-linux.diagnose = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.diagnose}/bin/nix2office-diagnose";
+        meta.description = "Хардуерна и desktop диагностика без промяна на настройки";
+      };
+      packages.x86_64-linux.facter = pkgs.nixos-facter;
+      apps.x86_64-linux.facter = {
+        type = "app";
+        program = "${pkgs.nixos-facter}/bin/nixos-facter";
+        meta.description = "Допълващ nixos-facter отчет от текущия pin (изисква root)";
+      };
       packages.x86_64-linux.configure =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
@@ -108,6 +189,7 @@
           '';
         };
       apps.x86_64-linux.maintain = {
+        meta.description = "Административна поддръжка на Nix2office";
         type = "app";
         program = "${self.packages.x86_64-linux.maintain}/bin/nix2office-maintain";
       };
@@ -116,6 +198,7 @@
         database = inputs.nix-index-database;
       };
       apps.x86_64-linux.comma = {
+        meta.description = "Временни програми с готов малък индекс";
         type = "app";
         program = "${self.packages.x86_64-linux.comma}/bin/comma";
       };
@@ -136,10 +219,12 @@
           '';
         };
       apps.x86_64-linux.install = {
+        meta.description = "Инсталация през проверена nixos-rescue връзка";
         type = "app";
         program = "${self.packages.x86_64-linux.install}/bin/nix2office-install";
       };
       apps.x86_64-linux.configure = {
+        meta.description = "Интерактивна подготовка на машинна конфигурация";
         type = "app";
         program = "${self.packages.x86_64-linux.configure}/bin/nix2office-configure";
       };
@@ -149,17 +234,7 @@
           pkgs = nixpkgs.legacyPackages.x86_64-linux;
         in
         pkgs.mkShellNoCC {
-          packages = with pkgs; [
-            (python3.withPackages (p: [
-              p.questionary
-              p.toml
-              p.pynacl
-            ]))
-            age
-            sops
-            mkpasswd
-            nixfmt
-          ];
+          packages = developmentTools;
         };
     };
 }

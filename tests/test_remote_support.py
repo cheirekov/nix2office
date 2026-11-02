@@ -197,38 +197,20 @@ class RemoteSupportTests(unittest.TestCase):
                 validate_machine(dict(disk='/dev/disk/by-id/ata-EXAMPLE', remote_support=r))
 
 
-@unittest.skipUnless(shutil.which('nix'), 'Nix is needed for pinned module evaluation')
+@unittest.skipUnless(shutil.which('nix') or os.environ.get('NIX2OFFICE_REMOTE_SUPPORT_EVALUATION'),
+                     'Nix is needed for pinned module evaluation')
 class RemoteSupportEvaluationTests(unittest.TestCase):
     def test_off_consent_unattended_units(self):
-        expression = r'''
-          let
-            f = builtins.getFlake (toString ROOT);
-            lib = f.inputs.nixpkgs.lib;
-            check = mode:
-              let
-                c = (f.nixosConfigurations.office-example.extendModules {
-                  modules = [{ nix2office.remoteSupport = {
-                    inherit mode;
-                    idServer = "example.org"; relayServer = "example.org"; publicKey = "test";
-                  }; }];
-                }).config;
-                active = mode != "off";
-                unit = c.systemd.services.rustdesk or {};
-              in {
-                inherit mode;
-                assertions = builtins.all (x: x.assertion) c.assertions;
-                service = builtins.hasAttr "rustdesk" c.systemd.services;
-                userService = builtins.hasAttr "nix2office-rustdesk" c.home-manager.users.office.systemd.user.services;
-                package = builtins.elem "rustdesk" (map lib.getName c.environment.systemPackages);
-                config = if active then unit.serviceConfig else {};
-                wantedBy = unit.wantedBy or [];
-                lightdm = c.services.xserver.displayManager.lightdm.extraConfig;
-              };
-          in map check [ "off" "consent" "unattended" ]
-        '''.replace('ROOT', json.dumps(str(ROOT)))
-        result = subprocess.run(['nix', 'eval', '--impure', '--json', '--expr', expression],
-                                check=True, text=True, capture_output=True, timeout=180)
-        for case in json.loads(result.stdout):
+        cached = os.environ.get('NIX2OFFICE_REMOTE_SUPPORT_EVALUATION')
+        if cached:
+            cases = json.loads(Path(cached).read_text())
+        else:
+            expression = ('import ' + json.dumps(str(ROOT / 'tests/remote-support.nix'))
+                          + ' { flake = builtins.getFlake ' + json.dumps(str(ROOT)) + '; }')
+            result = subprocess.run(['nix', 'eval', '--impure', '--json', '--expr', expression],
+                                    check=True, text=True, capture_output=True, timeout=180)
+            cases = json.loads(result.stdout)
+        for case in cases:
             with self.subTest(mode=case['mode']):
                 active = case['mode'] != 'off'
                 self.assertTrue(case['assertions'])
