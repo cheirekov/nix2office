@@ -165,6 +165,13 @@ nix flake check --no-write-lock-file --option builders ''
 The existing manual checks below remain available. Optional direnv support is
 provided by `.envrc`: review it and run `direnv allow`, or keep using `nix develop`.
 
+Read-only post-install checks are available as `nix2office-diagnose` in new
+systems, or `nix run .#diagnose`. Use `--json` or `--output FILE` for a private
+JSON report. Run it inside the office user's graphical session for graphics and
+sound checks; inaccessible data is reported as unknown. See the Bulgarian
+[hardware and diagnostics guide](docs/hardware-bg.md), including the opt-in
+Facter comparison from the current pin.
+
 ## Evaluate and build
 
 Replace `office-pc` with your TOML hostname (and `.deployment` with your output).

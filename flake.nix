@@ -124,6 +124,18 @@
         ];
       };
       formatter.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
+      packages.x86_64-linux.diagnose = import ./packages/diagnose.nix { inherit pkgs; };
+      apps.x86_64-linux.diagnose = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.diagnose}/bin/nix2office-diagnose";
+        meta.description = "Хардуерна и desktop диагностика без промяна на настройки";
+      };
+      packages.x86_64-linux.facter = pkgs.nixos-facter;
+      apps.x86_64-linux.facter = {
+        type = "app";
+        program = "${pkgs.nixos-facter}/bin/nixos-facter";
+        meta.description = "Допълващ nixos-facter отчет от текущия pin (изисква root)";
+      };
       packages.x86_64-linux.configure =
         let
           pkgs = nixpkgs.legacyPackages.x86_64-linux;

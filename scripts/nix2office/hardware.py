@@ -5,6 +5,8 @@ import subprocess
 
 from .config import ConfigError, DEFAULTS, GPU_MODULES
 
+RULES_VERSION = "1"
+
 
 PROBE = r'''set -eu
 export LC_ALL=C
@@ -19,12 +21,32 @@ printf 'N2O_FREQ_DRIVERS='; for p in /sys/devices/system/cpu/cpufreq/policy*/sca
 printf 'N2O_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_available_governors; do test ! -r "$p" || { tr '\n' ' ' < "$p"; printf ';'; }; done; printf '\n'
 printf 'N2O_CURRENT_GOVERNORS='; for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do test ! -r "$p" || cat "$p"; done | sort -u | tr '\n' ' '; printf '\n'
 printf 'N2O_ARCH='; uname -m
+printf 'N2O_KERNEL='; uname -r
 printf 'N2O_BOOT='; if test -d /sys/firmware/efi; then echo uefi; else echo bios; fi
 printf 'N2O_PCI='; for d in /sys/bus/pci/devices/*; do
   test -r "$d/class" || continue
   driver=unbound; test ! -e "$d/driver" || driver=$(basename "$(readlink -f "$d/driver")")
   printf '%s:%s:%s:%s ' "$(cat "$d/class" | sed s/0x//)" "$(cat "$d/vendor" | sed s/0x//)" "$(cat "$d/device" | sed s/0x//)" "$driver"
 done; printf '\n'
+for d in /sys/bus/pci/devices/*; do
+  test -r "$d/class" || continue
+  driver=unbound; test ! -e "$d/driver" || driver=$(basename "$(readlink -f "$d/driver")")
+  candidates=unknown
+  if command -v modprobe >/dev/null 2>&1 && test -r "$d/modalias"; then
+    candidates=$(modprobe --resolve-alias "$(cat "$d/modalias")" 2>/dev/null | sort -u | tr '\n' ',' || true)
+    test -n "$candidates" || candidates=none
+  fi
+  firmware=unknown
+  module=$driver
+  test ! -e "$d/driver/module" || module=$(basename "$(readlink -f "$d/driver/module")")
+  if test "$driver" != unbound && command -v modinfo >/dev/null 2>&1; then
+    if declared=$(modinfo -F firmware "$module" 2>/dev/null); then
+      firmware=$(printf '%s\n' "$declared" | sed '/^$/d' | sort -u | head -n 20 | tr '\n' ',')
+      test -n "$firmware" || firmware=none
+    fi
+  fi
+  printf 'N2O_PCI_DETAIL=%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(basename "$d")" "$(cat "$d/class" | sed s/0x//)" "$(cat "$d/vendor" | sed s/0x//)" "$(cat "$d/device" | sed s/0x//)" "$driver" "$candidates" "$firmware"
+done
 printf 'N2O_DRIVER_CANDIDATES='; for d in /sys/bus/pci/devices/*; do
   test -r "$d/modalias" || continue
   test ! -e "$d/driver" || continue
@@ -101,7 +123,30 @@ def parse_probe(output, source="local"):
             disks.append({"name": d["name"], "by_id": disk_ids, "size_bytes": int(d["size"]),
                           "model": _clean(d.get("model") or ""), "transport": d.get("tran") or "unknown",
                           "rotational": bool(d.get("rota")), "read_only": bool(d.get("ro")), "mountpoints": mounts})
-        return {"source": source, "architecture": _clean(fields["N2O_ARCH"]), "cpu": _clean(fields["N2O_CPU"]),
+        pci_devices = []
+        for line in facts.splitlines():
+            if not line.startswith("N2O_PCI_DETAIL="):
+                continue
+            values = line.partition("=")[2].split("\t")
+            if len(values) != 7:
+                raise ValueError("Malformed PCI detail")
+            address, cls, vid, pid, driver, candidates, firmware = values
+            if not (re.fullmatch(r"[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]", address)
+                    and re.fullmatch(r"[0-9a-fA-F]{6}", cls)
+                    and re.fullmatch(r"[0-9a-fA-F]{4}", vid)
+                    and re.fullmatch(r"[0-9a-fA-F]{4}", pid)
+                    and re.fullmatch(r"[A-Za-z0-9_-]+", driver)):
+                raise ValueError("Invalid PCI detail")
+            pci_devices.append({"address": address.lower(), "class": cls.lower(),
+                                "vendor": vid.lower(), "device": pid.lower(), "driver": driver,
+                                "candidates": [v for v in candidates.split(",") if re.fullmatch(r"[A-Za-z0-9_-]+", v) and v not in ("none", "unknown")],
+                                "candidates_known": candidates != "unknown",
+                                "firmware_declared_sample": [_clean(v) for v in firmware.split(",") if v and v not in ("none", "unknown")],
+                                "firmware_declarations_known": firmware != "unknown"})
+        return {"source": source, "schema_version": 2, "rules_version": RULES_VERSION,
+                "kernel_version": _clean(fields.get("N2O_KERNEL", "unknown")),
+                "pci_devices": pci_devices,
+                "architecture": _clean(fields["N2O_ARCH"]), "cpu": _clean(fields["N2O_CPU"]),
                 "cpu_vendor": vendor, "memory_mib": int(fields["N2O_MEMORY_KIB"]) // 1024,
                 "cpu_family": int(fields.get("N2O_FAMILY", "0") or "0"),
                 "cpu_model": int(fields.get("N2O_MODEL", "0") or "0"),
@@ -184,7 +229,26 @@ def hardware_review(inventory):
         match = re.fullmatch(r'([0-9a-fA-F]{6}):([0-9a-fA-F]{4}):([0-9a-fA-F]{4}):([A-Za-z0-9_-]+)', raw)
         if match:
             cls, vendor, device, driver = match.groups()
-            devices.append(dict(raw=raw, kind=cls[:2], vendor=vendor.lower(), device=device.lower(), driver=driver))
+            devices.append(dict(raw=raw, pci_class=cls.lower(), kind=cls[:2], vendor=vendor.lower(), device=device.lower(), driver=driver))
+    # Rich facts are additive: old saved inventories still use compact IDs.
+    detailed = inventory.get('pci_devices', [])
+    if not isinstance(detailed, list) or not all(isinstance(p, dict) for p in detailed):
+        raise ConfigError('pci_devices must be a list of PCI fact objects.')
+    for d in devices:
+        matches = [p for p in detailed if p.get('class') == d['pci_class']
+                   and p.get('vendor') == d['vendor'] and p.get('device') == d['device']
+                   and p.get('driver') == d['driver']]
+        detail = matches[0] if matches else {}
+        # Do not annotate/mutate caller-owned inventory or checkpoint values.
+        if matches:
+            detailed = [p for p in detailed if p is not detail]
+        d.update(address=detail.get('address'), candidates=detail.get('candidates', []),
+                 candidates_known=detail.get('candidates_known', False),
+                 firmware_declared_sample=detail.get('firmware_declared_sample', []),
+                 firmware_declarations_known=detail.get('firmware_declarations_known', False))
+        if not detail:
+            identity = ':' + d['vendor'] + ':' + d['device'] + ':'
+            d['candidates'] = [c.rsplit(':', 1)[-1] for c in inventory.get('driver_candidates', []) if identity in c]
     graphics = [d for d in devices if d['kind'] == '03']
     notes = []
     modules = set(inventory.get('initrd_modules', []))
@@ -209,18 +273,32 @@ def hardware_review(inventory):
         review = True
         notes.append('Открити са няколко GPU: не налагаме PRIME/offload или изключване на карта без PCI адреси и проверка на свързания дисплей.')
     for d in devices:
+        significant = d['kind'] in ('01', '02', '03', '04', '08', '0c')
+        d['status'] = ('warning' if d['driver'] == 'unbound' else 'pass') if significant else 'not-applicable'
+        d['action'] = ('Провери kernel modalias кандидатите и firmware; не зареждай произволен драйвер.'
+                       if d['driver'] == 'unbound' and significant else
+                       'Потвърди функцията след инсталация с nix2office-diagnose; binding не доказва работоспособност.'
+                       if significant else 'Не е необходим отделен драйвер за всяка bridge/host функция.')
         if d['driver'] == 'unbound':
             identity = d['vendor'] + ':' + d['device']
-            candidates = [c.rsplit(':', 1)[-1] for c in inventory.get('driver_candidates', []) if ':' + identity + ':' in c]
+            candidates = d['candidates']
             if d['kind'] == '06' or (d['kind'] not in ('01', '02', '03', '04', '08', '0c') and not candidates):
                 continue # Bridges/host functions often intentionally have no driver.
             review = True
-            notes.append('Устройство без активен драйвер ' + d['raw'] + '; кандидати от kernel modalias: ' + (', '.join(candidates) or 'няма данни') + '. Не е доказателство за липсващ firmware.')
+            notes.append('Устройство без активен драйвер ' + (d['address'] or 'PCI адрес unknown') + ' ' + d['raw'] + '; кандидати от kernel modalias: ' + (', '.join(candidates) or 'няма данни') + '. Не е доказателство за липсващ firmware.')
+    usb_devices = []
     for raw in inventory.get('usb_interfaces', []):
-        match = re.fullmatch(r'([0-9a-fA-F]{4}):([0-9a-fA-F]{4}):([0-9a-fA-F]{2}):unbound', raw)
+        match = re.fullmatch(r'([0-9a-fA-F]{4}):([0-9a-fA-F]{4}):([0-9a-fA-F]{2}):([A-Za-z0-9_-]+)', raw)
         if match:
-            review = True
-            notes.append('USB интерфейс без активен драйвер ' + raw + '; провери устройството, kernel driver и firmware. USB ID сам по себе си не доказва работещо устройство.')
+            vendor, device, cls, driver = match.groups()
+            unbound = driver == 'unbound'
+            usb_devices.append(dict(vendor=vendor.lower(), device=device.lower(), interface_class=cls.lower(),
+                                    driver=driver, status='warning' if unbound else 'pass',
+                                    action='Провери kernel modalias и firmware за USB интерфейса.' if unbound else
+                                    'Потвърди функцията на USB устройството след инсталация; binding не доказва работоспособност.'))
+            if unbound:
+                review = True
+                notes.append('USB интерфейс без активен драйвер ' + raw + '; провери устройството, kernel driver и firmware. USB ID сам по себе си не доказва работещо устройство.')
     missing = inventory.get('missing_firmware', [])
     if missing:
         review = True
@@ -232,7 +310,10 @@ def hardware_review(inventory):
     if not inventory.get('bluetooth_detected'):
         notes.append('Bluetooth не е открит: услугите остават изключени автоматично; USB адаптер може да се добави по-късно.')
     notes.append('Автоматично: CPU microcode по vendor, Mesa/DRM, откритите KMS модули, ALSA/PipeWire; мрежовите/звуковите kernel драйвери се зареждат чрез modalias. Това не е benchmark за оптимален performance.')
-    return dict(early_modules=sorted(modules & set(GPU_MODULES)), needs_review=review, notes=notes)
+    return dict(rules_version=RULES_VERSION, kernel_version=inventory.get('kernel_version', 'unknown'),
+                devices=devices, usb_devices=usb_devices, firmware_log_readable=inventory.get('firmware_log_readable', False),
+                missing_firmware=inventory.get('missing_firmware', []),
+                early_modules=sorted(modules & set(GPU_MODULES)), needs_review=review, notes=notes)
 
 
 def machine_hardware(inventory):
@@ -257,6 +338,7 @@ def balanced_governor(inventory):
 
 def describe_inventory(inventory):
     advice = recommendation(inventory)
+    print('Kernel: ' + inventory.get('kernel_version', 'unknown') + '; правила: ' + RULES_VERSION)
     print(f'CPU: {inventory["cpu"]}; нишки: {inventory["threads"]}; RAM: {inventory["memory_mib"]} MiB; boot: {inventory["boot_mode"]}')
     print(f'CPU policy maximum: {inventory.get("cpu_max_mhz", 0) or "unknown"} MHz (не е измерен turbo максимум)')
     print('Честотен драйвер: ' + (', '.join(inventory.get("frequency_drivers", [])) or 'unknown'))
@@ -265,6 +347,16 @@ def describe_inventory(inventory):
     for device in inventory.get("pci_ids", []):
         if device[:2] in ("02", "03", "04"):
             print("PCI class:vendor:device:driver: " + device)
+    for device in advice['hardware_review']['devices']:
+        if device['kind'] not in ('01', '02', '03', '04', '08', '0c'):
+            continue
+        print('PCI ' + (device['address'] or 'unknown') + ' [' + device['status'] + '] ' + device['raw'])
+        print('  Кандидати от rescue kernel modalias: ' + (', '.join(device['candidates']) or
+              ('няма съвпадение' if device['candidates_known'] else 'unknown')))
+        print('  Firmware декларации (до 20 имена, не доказват зареждане): ' +
+              (', '.join(device['firmware_declared_sample']) or
+               ('няма декларации' if device['firmware_declarations_known'] else 'unknown')))
+        print('  ' + device['action'])
     print("USB IDs: " + (", ".join(inventory.get("usb_ids", [])) or "unknown"))
     print("Bluetooth: " + ("открит адаптер" if inventory.get("bluetooth_detected") else "не е открит; може да е изключен във firmware"))
     for disk in eligible_disks(inventory):
