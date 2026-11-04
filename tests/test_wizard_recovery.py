@@ -97,11 +97,14 @@ class RecoveryTests(unittest.TestCase):
         q=FakeQ();q.values=['unattended','example.org','example.org','A'*43+'=']
         m=copy.deepcopy(DEFAULTS);choose(m,q,lambda prompt:prompt.ask())
         validators=[k['validate'] for _,k in q.prompts if 'validate' in k]
-        self.assertEqual(len(validators),3)
+        self.assertEqual(len(validators),4)
         self.assertIsNot(validators[2](''),True)
         self.assertIsNot(validators[2]('bad'),True)
         self.assertIs(validators[2]('A'*43+'='),True)
         self.assertIsNot(validators[0]('host; command'),True)
+        self.assertIsNot(validators[3]('not-a-cidr'),True)
+        self.assertIs(validators[3](''),True)
+        self.assertIs(validators[3]('172.16.16.0/24'),True)
 
     def test_short_and_mismatched_password_retries_locally_without_logging_secret(self):
         secret='VALID_TEST_PASSWORD'

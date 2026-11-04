@@ -77,3 +77,4 @@ mode = "off" # off, consent, unattended
 id_server = ""
 relay_server = ""
 public_key = ""
+ip_whitelist = [] # optional IPv4 CIDRs (/1 through /32); empty = access from anywhere

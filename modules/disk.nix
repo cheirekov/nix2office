@@ -26,11 +26,15 @@ in
         message = "Select a whole internal disk, not a by-id partition.";
       }
     ];
+    # Bound the boot menu instead of accumulating one entry per rebuild on
+    # small office SSDs; the store still keeps old generations until GC.
     boot.loader.grub = lib.mkIf bios {
       enable = true;
       efiSupport = false;
+      configurationLimit = 5;
     };
     boot.loader.systemd-boot.enable = !bios;
+    boot.loader.systemd-boot.configurationLimit = 5;
     boot.loader.efi.canTouchEfiVariables = !bios;
     boot.initrd.availableKernelModules = [
       "ahci"

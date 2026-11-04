@@ -40,6 +40,7 @@ let
       "id_server"
       "relay_server"
       "public_key"
+      "ip_whitelist"
     ];
     tools = [ "comma" ];
     fonts = [
@@ -158,6 +159,7 @@ in
       idServer = (m.remote_support or { }).id_server or "";
       relayServer = (m.remote_support or { }).relay_server or "";
       publicKey = (m.remote_support or { }).public_key or "";
+      ipWhitelist = (m.remote_support or { }).ip_whitelist or [ ];
     };
     tools.comma.enable = (m.tools or { }).comma or false;
     fonts.microsoftCore = (m.fonts or { }).microsoft_core or false;
