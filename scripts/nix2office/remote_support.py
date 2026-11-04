@@ -23,4 +23,16 @@ def choose(machine, q, ask):
         r['id_server'] = ask(q.text('ID server (hbbs), host или host:port:', default=r['id_server'], validate=valid('id_server'))).strip()
         r['relay_server'] = ask(q.text('Relay server (hbbr):', default=r['relay_server'] or r['id_server'], validate=valid('relay_server'))).strip()
         r['public_key'] = ask(q.text('Публичен server key (id_ed25519.pub):', default=r['public_key'], validate=valid('public_key'))).strip()
+
+        def valid_whitelist(value):
+            trial = copy.deepcopy(DEFAULTS)
+            trial['disk'] = '/dev/disk/by-id/ata-EXAMPLE'
+            trial['remote_support']['ip_whitelist'] = [v.strip() for v in value.replace(',', ' ').replace(';', ' ').split() if v.strip()]
+            try:
+                validate_machine(trial)
+                return True
+            except ConfigError as error:
+                return str(error)
+        whitelist = ask(q.text('IPv4 списък за RustDesk (незадължително; празно = достъп отвсякъде):', default=', '.join(r['ip_whitelist']), validate=valid_whitelist))
+        r['ip_whitelist'] = [v.strip() for v in whitelist.replace(',', ' ').replace(';', ' ').split() if v.strip()]
     return machine

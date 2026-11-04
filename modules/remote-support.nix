@@ -16,6 +16,7 @@ let
       id_server = cfg.idServer;
       relay_server = cfg.relayServer;
       public_key = cfg.publicKey;
+      ip_whitelist = cfg.ipWhitelist;
     }
   );
   prepare = pkgs.writeShellScript "rustdesk-prepare" ''
@@ -47,6 +48,11 @@ in
       type = lib.types.str;
       default = "";
     };
+    ipWhitelist = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[0-9.]+/[0-9]+");
+      default = [ ];
+      description = "IPv4 CIDR sources allowed to initiate RustDesk sessions; empty means no IP restriction.";
+    };
     passwordFile = lib.mkOption {
       type = lib.types.str;
       default = "/run/secrets/rustdesk-password";
@@ -66,6 +72,10 @@ in
       {
         assertion = config.services.xserver.enable && config.services.xserver.displayManager.lightdm.enable;
         message = "RustDesk pre-login support requires the office LightDM/Xorg desktop.";
+      }
+      {
+        assertion = lib.all ((import ../lib/valid-ipv4-cidr.nix lib)) cfg.ipWhitelist;
+        message = "RustDesk IP whitelist entries must be IPv4 CIDR (/1 through /32); leave the list empty for access from anywhere.";
       }
     ];
     environment.systemPackages = [ pkgs.rustdesk-flutter ];

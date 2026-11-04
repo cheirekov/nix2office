@@ -266,6 +266,13 @@ Keep `system.stateVersion` and `home.stateVersion` at their installation value.
 System upgrades and reboot are manual. Previous boot generations remain
 available; selecting one does not recover erased data or rotate old credentials.
 
+The office module caps the boot menu at five entries and omits local man/info
+and NixOS manuals so 30 GB-class SSDs stay lean. On an existing install that has
+accumulated many generations, run sudo nix-collect-garbage -d during a
+maintenance window after confirming the current generation is healthy; this
+deletes old rollback points. RustDesk support also accepts an optional
+ip_whitelist list of IPv4 CIDRs, empty meaning access from anywhere.
+
 Before publication inspect `git ls-files` and scan tracked content for private
 keys, password hashes, addresses and host identifiers. Only the generic public
 repository belongs on GitHub; `.deployment/` has no public remote.

@@ -23,7 +23,7 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
-    "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": ""},
+    "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -144,6 +144,21 @@ def validate_machine(raw):
             raise ConfigError("remote_support.public_key: expected a base64 32-byte public key.") from None
     if r["mode"] != "off" and not all(r[k] for k in ("id_server", "relay_server", "public_key")):
         raise ConfigError("remote_support: provide both servers and the public key.")
+    whitelist = r["ip_whitelist"]
+    if not isinstance(whitelist, list) or len(whitelist) != len(set(whitelist)):
+        raise ConfigError("remote_support.ip_whitelist: expected a list of unique IPv4 CIDRs.")
+    for entry in whitelist:
+        text(entry, "remote_support.ip_whitelist")
+        try:
+            if not re.fullmatch(r"[0-9.]+/(0|[1-9][0-9]?)", entry):
+                raise ValueError
+            if ipaddress.IPv4Network(entry).prefixlen == 0:
+                raise ValueError
+        except ValueError:
+            raise ConfigError(
+                "remote_support.ip_whitelist: expected an IPv4 CIDR /1 through /32, "
+                "e.g. 192.168.1.0/24 or 203.0.113.10/32; leave the list empty for access from anywhere."
+            ) from None
     extra = m["apps"]["extra"]
     if not isinstance(extra, list) or any(not isinstance(x, str) or x not in CATALOG for x in extra) or len(set(extra)) != len(extra):
         raise ConfigError("apps.extra: choose unique application IDs from the supported catalog.")

@@ -63,6 +63,15 @@ class RemoteSupportTests(unittest.TestCase):
             rd.prepare_system(dict(mode='off'), cfg, '/missing', '/missing', [])
             self.assertFalse(cfg.exists())
 
+    def test_ip_whitelist_is_serialized_and_cleared(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / 'config'
+            rd.apply(dict(SETTINGS, mode='consent', ip_whitelist=['172.16.16.0/24', '203.0.113.10/32']), cfg)
+            self.assertEqual(toml.load(cfg / 'RustDesk2.toml')['options']['whitelist'],
+                             '172.16.16.0/24,203.0.113.10/32')
+            rd.apply(dict(SETTINGS, mode='consent'), cfg)
+            self.assertEqual(toml.load(cfg / 'RustDesk2.toml')['options']['whitelist'], '')
+
     def test_missing_or_invalid_secret_preserves_existing_configs(self):
         with tempfile.TemporaryDirectory() as d:
             cfg = Path(d) / 'config'
@@ -192,7 +201,11 @@ class RemoteSupportTests(unittest.TestCase):
             self.assertNotIn('Traceback', result.stderr)
 
     def test_validation(self):
-        for r in ({'mode': 'invalid'}, {'mode': 'consent'}, {'public_key': 'bad'}, {'id_server': 'host; command'}, {'id_server': 'host:99999'}, {'password': 'NO_SECRET_IN_TOML'}):
+        for r in ({'mode': 'invalid'}, {'mode': 'consent'}, {'public_key': 'bad'}, {'id_server': 'host; command'},
+                  {'id_server': 'host:99999'}, {'password': 'NO_SECRET_IN_TOML'},
+                  {'ip_whitelist': ['not-a-cidr']}, {'ip_whitelist': ['0.0.0.0/0']},
+                  {'ip_whitelist': ['192.168.1.0/24', '192.168.1.0/24']},
+                  {'ip_whitelist': '192.168.1.0/24'}):
             with self.assertRaises(ConfigError):
                 validate_machine(dict(disk='/dev/disk/by-id/ata-EXAMPLE', remote_support=r))
 

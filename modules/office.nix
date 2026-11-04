@@ -114,6 +114,12 @@ in
     nix.settings.substituters = [ "https://cache.nixos.org/" ];
     nix.settings.auto-optimise-store = true;
     system.autoUpgrade.enable = false;
+    # The light office profile omits local man/info/NixOS manuals to keep a
+    # small SSD lean; re-enable these options in a host override when needed.
+    documentation.nixos.enable = false;
+    documentation.doc.enable = false;
+    documentation.man.enable = false;
+    documentation.info.enable = false;
 
     time.timeZone = "Europe/Sofia";
     i18n.defaultLocale = "bg_BG.UTF-8";

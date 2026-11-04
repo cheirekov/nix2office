@@ -112,6 +112,7 @@ def apply(settings, directory, password_file='', *, shared_identity=None, passwo
         'verification-method': ('use-temporary-password' if settings['mode'] == 'consent'
                                 else 'use-permanent-password'),
         'stop-service': '',
+        'whitelist': ','.join(settings.get('ip_whitelist', [])),
     })
     # Both documents are parsed and checked before either is replaced.
     write_config(directory, 'RustDesk.toml', main)

@@ -15,6 +15,7 @@ let
                 idServer = "example.org";
                 relayServer = "example.org";
                 publicKey = "test";
+                ipWhitelist = [ "172.16.16.0/24" ];
               };
             }
           ];
