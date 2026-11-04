@@ -31,7 +31,7 @@ let
         }
       )
     } "$out/manifest.json"
-    cp ${builtins.readFile ../packages/h264ify-inject.js} "$out/inject.js"
+    cp ${pkgs.writeText "inject.js" (builtins.readFile ../packages/h264ify-inject.js)} "$out/inject.js"
   '';
   vaapiChromium =
     pkg:
