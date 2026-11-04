@@ -9,6 +9,7 @@ let
   applications = import ../lib/applications.nix {
     inherit pkgs;
     inherit (cfg) apps;
+    vaapi = cfg.performance.vaapi;
   };
   bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
 in
@@ -280,6 +281,8 @@ in
         "media.ffmpeg.vaapi.enabled" = true;
         "media.hardware-video-decoding.enabled" = true;
         "gfx.webrender.all" = true;
+        "media.webm.enabled" = false;
+        "media.av1.enabled" = false;
       };
       preferencesStatus = "default";
     };
