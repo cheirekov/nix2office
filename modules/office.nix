@@ -9,6 +9,7 @@ let
   applications = import ../lib/applications.nix {
     inherit pkgs;
     inherit (cfg) apps;
+    vaapi = cfg.performance.vaapi;
   };
   bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
 in
@@ -36,6 +37,11 @@ in
       ];
       default = "auto";
       description = "CPU frequency governor; auto leaves the kernel default. The assistant recommends from the target's available governors.";
+    };
+    performance.vaapi = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "VA-API hardware video decoding, offloading H.264 from the CPU on supported Intel/AMD GPUs.";
     };
     hardware.cpuVendor = lib.mkOption {
       type = lib.types.enum [
@@ -166,6 +172,11 @@ in
     services.libinput.enable = true;
     programs.xfconf.enable = true;
     hardware.graphics.enable = true;
+    # VA-API H.264 offload. Intel Gen7 (Bay Trail/Haswell) uses the legacy i965
+    # driver; newer Intel prefers intel-media-driver, kept for a follow-up rule.
+    hardware.graphics.extraPackages = lib.optionals cfg.performance.vaapi (
+      lib.optional (cfg.hardware.cpuVendor == "intel") pkgs.intel-vaapi-driver
+    );
     hardware.cpu.intel.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "intel");
     hardware.cpu.amd.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "amd");
     powerManagement.cpuFreqGovernor = lib.mkIf (
@@ -269,7 +280,16 @@ in
       enable = cfg.apps.browser == "firefox-esr";
       package = pkgs.firefox-esr;
       languagePacks = [ "bg" ];
-      preferences."intl.locale.requested" = "bg";
+      preferences = {
+        "intl.locale.requested" = "bg";
+      }
+      // lib.optionalAttrs cfg.performance.vaapi {
+        "media.ffmpeg.vaapi.enabled" = true;
+        "media.hardware-video-decoding.enabled" = true;
+        "gfx.webrender.all" = true;
+        "media.webm.enabled" = false;
+        "media.av1.enabled" = false;
+      };
       preferencesStatus = "default";
     };
     zramSwap = {

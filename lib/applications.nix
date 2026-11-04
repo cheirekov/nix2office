@@ -1,5 +1,44 @@
-{ pkgs, apps }:
+{
+  pkgs,
+  apps,
+  vaapi ? false,
+}:
 let
+  # Brave's nixpkgs wrapper still passes the legacy AcceleratedVideoDecodeLinuxGL
+  # feature; Chromium 151+ uses VaapiVideoDecoder.
+  vaapiFlags = "--enable-features=VaapiVideoDecoder";
+  h264ify = pkgs.runCommand "nix2office-h264ify" { } ''
+    mkdir -p "$out"
+    cp ${
+      pkgs.writeText "manifest.json" (
+        builtins.toJSON {
+          manifest_version = 3;
+          name = "nix2office-h264";
+          version = "1.0";
+          content_scripts = [
+            {
+              matches = [
+                "*://*.youtube.com/*"
+                "*://*.youtube-nocookie.com/*"
+                "*://*.youtu.be/*"
+              ];
+              js = [ "inject.js" ];
+              run_at = "document_start";
+              all_frames = true;
+              world = "MAIN";
+            }
+          ];
+        }
+      )
+    } "$out/manifest.json"
+    cp ${pkgs.writeText "inject.js" (builtins.readFile ../packages/h264ify-inject.js)} "$out/inject.js"
+  '';
+  vaapiChromium =
+    pkg:
+    if vaapi then
+      pkg.override { commandLineArgs = "${vaapiFlags} --load-extension=${h264ify}"; }
+    else
+      pkg;
   browsers = {
     firefox-esr = {
       name = "Firefox ESR";
@@ -20,14 +59,14 @@ let
       exec = "brave";
       icon = "brave-browser";
       desktop = "brave-browser.desktop";
-      package = pkgs.brave;
+      package = vaapiChromium pkgs.brave;
     };
     google-chrome = {
       name = "Google Chrome";
       exec = "google-chrome-stable";
       icon = "google-chrome";
       desktop = "google-chrome.desktop";
-      package = pkgs.google-chrome;
+      package = vaapiChromium pkgs.google-chrome;
     };
   };
 in
