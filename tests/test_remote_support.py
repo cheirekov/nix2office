@@ -72,6 +72,17 @@ class RemoteSupportTests(unittest.TestCase):
             rd.apply(dict(SETTINGS, mode='consent'), cfg)
             self.assertEqual(toml.load(cfg / 'RustDesk2.toml')['options']['whitelist'], '')
 
+    def test_all_ipv4_whitelist_maps_to_sentinel_and_direct_ip(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / 'config'
+            rd.apply(dict(SETTINGS, mode='consent', ip_whitelist=['0.0.0.0/0'], direct_ip_access=True), cfg)
+            options = toml.load(cfg / 'RustDesk2.toml')['options']
+            self.assertEqual(options['whitelist'], '0.0.0.0')
+            self.assertEqual(options['direct-server'], 'Y')
+            self.assertEqual(options['direct-access-port'], '21118')
+            rd.apply(dict(SETTINGS, mode='consent'), cfg)
+            self.assertEqual(toml.load(cfg / 'RustDesk2.toml')['options']['direct-server'], 'N')
+
     def test_missing_or_invalid_secret_preserves_existing_configs(self):
         with tempfile.TemporaryDirectory() as d:
             cfg = Path(d) / 'config'
@@ -203,11 +214,15 @@ class RemoteSupportTests(unittest.TestCase):
     def test_validation(self):
         for r in ({'mode': 'invalid'}, {'mode': 'consent'}, {'public_key': 'bad'}, {'id_server': 'host; command'},
                   {'id_server': 'host:99999'}, {'password': 'NO_SECRET_IN_TOML'},
-                  {'ip_whitelist': ['not-a-cidr']}, {'ip_whitelist': ['0.0.0.0/0']},
+                  {'ip_whitelist': ['not-a-cidr']},
                   {'ip_whitelist': ['192.168.1.0/24', '192.168.1.0/24']},
                   {'ip_whitelist': '192.168.1.0/24'}):
             with self.assertRaises(ConfigError):
                 validate_machine(dict(disk='/dev/disk/by-id/ata-EXAMPLE', remote_support=r))
+
+        valid = dict(mode='consent', id_server='example.org', relay_server='example.org',
+                     public_key='A' * 43 + '=', ip_whitelist=['0.0.0.0/0'], direct_ip_access=True)
+        self.assertEqual(validate_machine(dict(disk='/dev/disk/by-id/ata-EXAMPLE', remote_support=valid))['remote_support']['ip_whitelist'], ['0.0.0.0/0'])
 
 
 @unittest.skipUnless(shutil.which('nix') or os.environ.get('NIX2OFFICE_REMOTE_SUPPORT_EVALUATION'),
@@ -230,6 +245,7 @@ class RemoteSupportEvaluationTests(unittest.TestCase):
                 self.assertEqual(case['service'], active)
                 self.assertEqual(case['package'], active)
                 self.assertFalse(case['userService'])
+                self.assertEqual(case['directFirewall'], active)
                 if active:
                     config = case['config']
                     self.assertEqual(config['User'], 'root')

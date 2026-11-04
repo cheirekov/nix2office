@@ -1,5 +1,8 @@
 # Evaluate integrations without building every browser or activating a machine.
-{ root, flake ? builtins.getFlake root }:
+{
+  root,
+  flake ? builtins.getFlake root,
+}:
 let
   f = flake;
   lib = f.inputs.nixpkgs.lib;
@@ -65,6 +68,8 @@ let
                   idServer = lib.mkForce "rustdesk.example.org";
                   relayServer = lib.mkForce "rustdesk.example.org";
                   publicKey = lib.mkForce "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+                  ipWhitelist = lib.mkForce (if variant.services then [ "0.0.0.0/0" ] else [ ]);
+                  directIpAccess = lib.mkForce variant.services;
                 };
                 tools.comma.enable = lib.mkForce variant.services;
                 apps.extra = lib.mkForce (lib.optional variant.services "remmina");
@@ -122,6 +127,23 @@ let
       c.networking.firewall.extraInputRules;
     assert (c.nix2office.sharing.network == "0.0.0.0/0") == variant.services;
     assert c.services.samba.enable == variant.services;
+    assert (builtins.hasAttr "samba-nmbd" c.systemd.services) == variant.services;
+    assert (builtins.hasAttr "wsdd" c.systemd.services) == variant.services;
+    assert
+      lib.hasInfix "ip saddr ${c.nix2office.sharing.network} tcp dport 139 accept" c.networking.firewall.extraInputRules
+      == variant.services;
+    assert
+      lib.hasInfix "ip saddr ${c.nix2office.sharing.network} udp dport 137 accept" c.networking.firewall.extraInputRules
+      == variant.services;
+    assert
+      lib.hasInfix "ip saddr ${c.nix2office.sharing.network} udp dport 3702 accept" c.networking.firewall.extraInputRules
+      == variant.services;
+    assert
+      lib.hasInfix "ip saddr ${c.nix2office.sharing.network} tcp dport 5357 accept" c.networking.firewall.extraInputRules
+      == variant.services;
+    assert
+      lib.hasInfix "ip saddr 0.0.0.0/0 tcp dport 21118 accept" c.networking.firewall.extraInputRules
+      == variant.services;
     assert c.services.tailscale.enable == variant.services;
     assert c.services.zerotierone.enable == variant.services;
     assert (builtins.hasAttr "autostart/nextcloud.desktop" home.xdg.configFile) == variant.services;

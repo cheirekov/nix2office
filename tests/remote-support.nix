@@ -16,6 +16,7 @@ let
                 relayServer = "example.org";
                 publicKey = "test";
                 ipWhitelist = [ "172.16.16.0/24" ];
+                directIpAccess = true;
               };
             }
           ];
@@ -32,6 +33,7 @@ let
       config = if active then unit.serviceConfig else { };
       wantedBy = unit.wantedBy or [ ];
       lightdm = c.services.xserver.displayManager.lightdm.extraConfig;
+      directFirewall = lib.hasInfix "ip saddr 172.16.16.0/24 tcp dport 21118 accept" c.networking.firewall.extraInputRules;
     };
 in
 map check [

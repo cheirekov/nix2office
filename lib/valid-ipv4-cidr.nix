@@ -7,5 +7,5 @@ in
 parts != null
 && lib.all decimal parts
 && lib.all (s: builtins.fromJSON s <= 255) (lib.take 4 parts)
-&& builtins.fromJSON (builtins.elemAt parts 4) >= 1
+&& (builtins.fromJSON (builtins.elemAt parts 4) >= 1 || value == "0.0.0.0/0")
 && builtins.fromJSON (builtins.elemAt parts 4) <= 32

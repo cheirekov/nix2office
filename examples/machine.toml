@@ -77,4 +77,5 @@ mode = "off" # off, consent, unattended
 id_server = ""
 relay_server = ""
 public_key = ""
-ip_whitelist = [] # optional IPv4 CIDRs (/1 through /32); empty = access from anywhere
+ip_whitelist = [] # IPv4 CIDRs; empty or 0.0.0.0/0 = access from anywhere
+direct_ip_access = false # allow RustDesk direct IP on TCP 21118 (read initial ID)

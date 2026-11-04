@@ -6,6 +6,11 @@
 }:
 let
   cfg = config.nix2office.remoteSupport;
+  directSources =
+    if cfg.ipWhitelist == [ ] || builtins.elem "0.0.0.0/0" cfg.ipWhitelist then
+      [ "0.0.0.0/0" ]
+    else
+      cfg.ipWhitelist;
   python = pkgs.python3.withPackages (p: [
     p.toml
     p.pynacl
@@ -17,6 +22,7 @@ let
       relay_server = cfg.relayServer;
       public_key = cfg.publicKey;
       ip_whitelist = cfg.ipWhitelist;
+      direct_ip_access = cfg.directIpAccess;
     }
   );
   prepare = pkgs.writeShellScript "rustdesk-prepare" ''
@@ -53,6 +59,11 @@ in
       default = [ ];
       description = "IPv4 CIDR sources allowed to initiate RustDesk sessions; empty means no IP restriction.";
     };
+    directIpAccess = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Allow RustDesk direct IP connections on TCP 21118, useful for reading the initial ID.";
+    };
     passwordFile = lib.mkOption {
       type = lib.types.str;
       default = "/run/secrets/rustdesk-password";
@@ -75,10 +86,13 @@ in
       }
       {
         assertion = lib.all ((import ../lib/valid-ipv4-cidr.nix lib)) cfg.ipWhitelist;
-        message = "RustDesk IP whitelist entries must be IPv4 CIDR (/1 through /32); leave the list empty for access from anywhere.";
+        message = "RustDesk IP whitelist entries must be IPv4 CIDR (/0 through /32); 0.0.0.0/0 or an empty list allows access from anywhere.";
       }
     ];
     environment.systemPackages = [ pkgs.rustdesk-flutter ];
+    networking.firewall.extraInputRules = lib.mkIf cfg.directIpAccess (
+      lib.concatMapStringsSep "\n" (cidr: "ip saddr ${cidr} tcp dport 21118 accept") directSources
+    );
     # RustDesk 1.4.5's X11 fallback uses the active account's ~/.Xauthority.
     # Keep LightDM's cookie authentication, including for its greeter account.
     services.xserver.displayManager.lightdm.extraConfig = "user-authority-in-system-dir=false";

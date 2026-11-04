@@ -8,16 +8,25 @@ mode = "consent" # off, consent, unattended
 id_server = "rustdesk.example.org"
 relay_server = "rustdesk.example.org"
 public_key = "PUBLIC_BASE64_SERVER_KEY"
-ip_whitelist = ["192.168.1.0/24", "203.0.113.10/32"] # незадължително; празен списък = достъп отвсякъде
+ip_whitelist = ["192.168.1.0/24", "203.0.113.10/32"] # незадължително; празен списък или 0.0.0.0/0 = достъп отвсякъде
+direct_ip_access = false # TCP 21118 без hbbs/hbbr, напр. за първоначално прочитане на ID
 ```
 
 При `unattended` поддръжката може да се свърже с login екрана след рестарт, без предварителен вход в XFCE. Все още са нужни работеща мрежа, достъпен hbbs/hbbr и стартирал LightDM/Xorg. RustDesk не отключва криптиран диск в initrd, не показва firmware/bootloader екрани и не заобикаля паролата за вход в Linux. При `consent` остава задължително локално потвърждение; няма автоматично разрешение преди login. Не разчитайте, че прозорецът за потвърждение ще работи в ограничената greeter сесия. За дистанционно възстановяване след reboot използвайте изрично избрания режим `unattended`.
 
-ip_whitelist е незадължителен списък от IPv4 CIDR (от /1 до /32), които могат да
+ip_whitelist е незадължителен списък от IPv4 CIDR (/0 до /32), които могат да
 инициират входяща връзка. Стойността се записва като разделен със запетаи списък
 в опцията whitelist на RustDesk; сървърът отхвърля източници извън нея. Празен
-списък означава без IP ограничение (достъп отвсякъде), затова 0.0.0.0/0 не се
-приема — празният списък вече изразява същото.
+списък означава без IP ограничение. Изричното 0.0.0.0/0 също се приема и се
+преобразува в RustDesk sentinel 0.0.0.0, който позволява всички IPv4 източници.
+
+direct_ip_access = true позволява входящи връзки директно към IP адреса на
+машината през TCP 21118, без hbbs/hbbr. Това е полезно за първоначално прочитане
+на RustDesk ID. Когато е включено, се отваря firewall правило за TCP 21118 от
+същите IPv4 източници като whitelist (празен списък или 0.0.0.0/0 означава
+всички IPv4). RustDesk получава direct-server = "Y" и direct-access-port =
+"21118"; ID-базираната поддръжка продължава да изисква hbbs, hbbr и публичния
+ключ.
 
 ## Парола и идентичност
 
@@ -46,6 +55,8 @@ ip_whitelist е незадължителен списък от IPv4 CIDR (от /
 
 `off` не изтрива запазените частни конфигурации, upstream autostart файлове или самостоятелни инсталации. За връщане назад възстановете предишното поколение/режим и рестартирайте управляваната услуга. В рамките на тази промяна са проверени подготовката и Nix оценяването; реални входящи връзки, login/logout и reboot на целевия компютър остават приемателен тест след инсталацията.
 
-Не стартираме hbbs/hbbr на офис машината и не отваряме входящи server портове. hbbs е ID сървърът, hbbr е relay; HTTP/SOCKS proxy е друга настройка.
+Не стартираме hbbs/hbbr на офис машината. Единственият входящ порт, който може
+да се отвори, е TCP 21118 при изрично включен директен IP достъп. hbbs е ID
+сървърът, hbbr е relay; HTTP/SOCKS proxy е друга настройка.
 
 Първични източници: [systemd unit на RustDesk 1.4.5](https://github.com/rustdesk/rustdesk/blob/1.4.5/res/rustdesk.service), [Linux dispatcher и Xauthority discovery](https://github.com/rustdesk/rustdesk/blob/1.4.5/src/platform/linux.rs), [server/tray и CLI](https://github.com/rustdesk/rustdesk/blob/1.4.5/src/core_main.rs), [root/user IPC синхронизация](https://github.com/rustdesk/rustdesk/blob/1.4.5/src/server.rs), [config paths и identity формат в точния hbb_common submodule](https://github.com/rustdesk/hbb_common/blob/073403edbf1fffcb3acfe8cbe7582ee873b23398/src/config.rs), [режими за парола](https://github.com/rustdesk/hbb_common/blob/073403edbf1fffcb3acfe8cbe7582ee873b23398/src/password_security.rs), [LightDM authority избор](https://github.com/canonical/lightdm/blob/main/src/x-server.c) и [authority файл](https://github.com/canonical/lightdm/blob/main/src/session.c), [NixOS LightDM при project pin](https://github.com/NixOS/nixpkgs/blob/718f670e845328e9c2cecdd832835712b2cbd065/nixos/modules/services/x11/display-managers/lightdm.nix), [официална клиентска конфигурация](https://rustdesk.com/docs/en/self-host/client-configuration/).

@@ -33,6 +33,7 @@ def choose(machine, q, ask):
                 return True
             except ConfigError as error:
                 return str(error)
-        whitelist = ask(q.text('IPv4 списък за RustDesk (незадължително; празно = достъп отвсякъде):', default=', '.join(r['ip_whitelist']), validate=valid_whitelist))
+        whitelist = ask(q.text('IPv4 списък за RustDesk (незадължително; празно или 0.0.0.0/0 = достъп отвсякъде):', default=', '.join(r['ip_whitelist']), validate=valid_whitelist))
         r['ip_whitelist'] = [v.strip() for v in whitelist.replace(',', ' ').replace(';', ' ').split() if v.strip()]
+        r['direct_ip_access'] = ask(q.confirm('RustDesk — директен IP достъп (TCP 21118) за първоначално ID?', default=r['direct_ip_access']))
     return machine
