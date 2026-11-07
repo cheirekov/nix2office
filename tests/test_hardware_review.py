@@ -2,12 +2,12 @@ import unittest
 from nix2office.hardware import hardware_review, machine_hardware, parse_probe, PROBE
 from tests.test_assistant import inventory_text
 class HardwareReviewTests(unittest.TestCase):
-    def test_9400_gt_auto_nouveau_from_pci_even_without_drm_node(self):
+    def test_nvidia_nouveau_from_pci_even_without_drm_node(self):
         inv=parse_probe(inventory_text().replace('N2O_GPU=i915','N2O_PCI=030000:10de:0641:nouveau 020000:14e4:1692:tg3\nN2O_FIRMWARE_LOG_READABLE=1\nN2O_GPU='))
         r=hardware_review(inv)
         self.assertEqual(r['early_modules'],['nouveau'])
         self.assertFalse(r['needs_review'])
-        self.assertTrue(any('9400 GT' in n for n in r['notes']))
+        self.assertTrue(any('10de:0641' in n for n in r['notes']))
         self.assertEqual(machine_hardware(inv)['initrd_modules'],['nouveau'])
         self.assertFalse(inv['bluetooth_detected'])
     def test_unbound_and_firmware_are_distinct_evidence(self):

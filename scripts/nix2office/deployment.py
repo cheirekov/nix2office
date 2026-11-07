@@ -246,7 +246,12 @@ def summary(m):
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
     print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
-    print("RustDesk: " + m["remote_support"]["mode"])
+    rs = m["remote_support"]
+    rustdesk = rs["mode"]
+    if rs["mode"] != "off":
+        rustdesk += " | IP: " + (", ".join(rs["ip_whitelist"]) or "всички (празен списък)")
+        rustdesk += " | директен IP: " + ("да" if rs["direct_ip_access"] else "не")
+    print("RustDesk: " + rustdesk)
     print("Comma с готов малък индекс: " + ("включен" if m["tools"]["comma"] else "изключен"))
     print("Допълнителни програми: " + (", ".join(m["apps"]["extra"]) or "няма"))
     print(f'Шрифтове: Microsoft Core={m["fonts"]["microsoft_core"]}; Carlito/Caladea={m["fonts"]["office_fallbacks"]}')

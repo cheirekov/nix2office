@@ -30,7 +30,9 @@ and scanning, and the Nextcloud desktop sync client.
 
 Thunar includes SMB client support: use **Go → Open Location** and enter
 `smb://SERVER/SHARE`. The assistant also offers an authenticated Samba server
-for one folder, with the selected Workgroup and a trusted LAN. WireGuard uses
+for one folder, with the selected Workgroup and a trusted LAN. In server mode
+it starts `wsdd` (WS-Discovery) and `nmbd` (NetBIOS) so Windows and this host
+can find each other in Network. WireGuard uses
 NetworkManager; optional Tailscale has Trayscale GUI; ZeroTier uses its daemon
 and admin CLI. Account enrollment remains interactive after installation.
 
@@ -271,7 +273,8 @@ and NixOS manuals so 30 GB-class SSDs stay lean. On an existing install that has
 accumulated many generations, run sudo nix-collect-garbage -d during a
 maintenance window after confirming the current generation is healthy; this
 deletes old rollback points. RustDesk support also accepts an optional
-ip_whitelist list of IPv4 CIDRs, empty meaning access from anywhere.
+ip_whitelist list of IPv4 CIDRs (empty or 0.0.0.0/0 meaning access from
+anywhere) and an opt-in direct IP listener on TCP 21118.
 
 Before publication inspect `git ls-files` and scan tracked content for private
 keys, password hashes, addresses and host identifiers. Only the generic public

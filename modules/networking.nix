@@ -92,7 +92,7 @@ in
       services.samba = {
         enable = true;
         openFirewall = false;
-        nmbd.enable = false;
+        nmbd.enable = true;
         winbindd.enable = false;
         settings = {
           global = {
@@ -115,8 +115,29 @@ in
           };
         };
       };
+      systemd.services.wsdd = {
+        description = "Web Services Dynamic Discovery (WSD) host for Samba";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${pkgs.wsdd}/bin/wsdd --ipv4only --shortlog --workgroup ${cfg.sharing.workgroup}";
+          DynamicUser = true;
+          AmbientCapabilities = "CAP_NET_BIND_SERVICE";
+          CapabilityBoundingSet = "CAP_NET_BIND_SERVICE";
+          NoNewPrivileges = true;
+          Restart = "on-failure";
+          RestartSec = 10;
+        };
+      };
       networking.firewall.extraInputRules = ''
         ip saddr ${cfg.sharing.network} tcp dport 445 accept
+        ip saddr ${cfg.sharing.network} tcp dport 139 accept
+        ip saddr ${cfg.sharing.network} udp dport 137 accept
+        ip saddr ${cfg.sharing.network} udp dport 138 accept
+        ip saddr ${cfg.sharing.network} udp dport 3702 accept
+        ip saddr ${cfg.sharing.network} tcp dport 5357 accept
       '';
       systemd.tmpfiles.rules = [ "d ${sharePath} 0700 ${cfg.user.name} users -" ];
     })

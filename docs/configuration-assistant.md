@@ -116,7 +116,7 @@ is neither authentication nor Active Directory enrollment.
   allowed from the specified IPv4 CIDR. Choose read-only or writable access.
   After installation, admin sets a separate Samba credential with
   `sudo smbpasswd -a maria`. Use `\\HOST\Shared` from Windows. Automatic Windows
-  discovery/NetBIOS and domain joining are not included.
+  discovery/NetBIOS is included via WSD (wsdd) and NetBIOS (nmbd); domain joining is not included.
 
 The default source CIDR for both SMB and admin SSH is `0.0.0.0/0` (all IPv4
 sources); narrow it to a LAN or a single IP/32 when desired. Bare `0.0.0.0` is

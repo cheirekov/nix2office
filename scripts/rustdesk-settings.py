@@ -104,6 +104,8 @@ def apply(settings, directory, password_file='', *, shared_identity=None, passwo
     if shared_identity is not None:
         main.update(identity(shared_identity))
     main['password'] = password
+    ip_whitelist = settings.get('ip_whitelist', [])
+    whitelist = '0.0.0.0' if '0.0.0.0/0' in ip_whitelist else ','.join(ip_whitelist)
     network.setdefault('options', {}).update({
         'custom-rendezvous-server': settings['id_server'],
         'relay-server': settings['relay_server'],
@@ -112,7 +114,9 @@ def apply(settings, directory, password_file='', *, shared_identity=None, passwo
         'verification-method': ('use-temporary-password' if settings['mode'] == 'consent'
                                 else 'use-permanent-password'),
         'stop-service': '',
-        'whitelist': ','.join(settings.get('ip_whitelist', [])),
+        'whitelist': whitelist,
+        'direct-server': 'Y' if settings.get('direct_ip_access') else 'N',
+        'direct-access-port': '21118',
     })
     # Both documents are parsed and checked before either is replaced.
     write_config(directory, 'RustDesk.toml', main)

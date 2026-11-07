@@ -23,7 +23,7 @@ DEFAULTS = {
     "profile": "light",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
-    "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": []},
+    "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -129,6 +129,8 @@ def validate_machine(raw):
     r = m["remote_support"]
     if r["mode"] not in ("off", "consent", "unattended"):
         raise ConfigError("remote_support.mode: choose off, consent or unattended.")
+    if type(r["direct_ip_access"]) is not bool:
+        raise ConfigError("remote_support.direct_ip_access: expected true or false.")
     for key in ("id_server", "relay_server"):
         text(r[key], "remote_support." + key)
         if r[key] and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?", r[key]):
@@ -152,12 +154,11 @@ def validate_machine(raw):
         try:
             if not re.fullmatch(r"[0-9.]+/(0|[1-9][0-9]?)", entry):
                 raise ValueError
-            if ipaddress.IPv4Network(entry).prefixlen == 0:
-                raise ValueError
+            ipaddress.IPv4Network(entry)
         except ValueError:
             raise ConfigError(
-                "remote_support.ip_whitelist: expected an IPv4 CIDR /1 through /32, "
-                "e.g. 192.168.1.0/24 or 203.0.113.10/32; leave the list empty for access from anywhere."
+                "remote_support.ip_whitelist: expected an IPv4 CIDR /0 through /32, "
+                "e.g. 192.168.1.0/24 or 203.0.113.10/32; 0.0.0.0/0 or an empty list allows access from anywhere."
             ) from None
     extra = m["apps"]["extra"]
     if not isinstance(extra, list) or any(not isinstance(x, str) or x not in CATALOG for x in extra) or len(set(extra)) != len(extra):
