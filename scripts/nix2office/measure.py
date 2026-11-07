@@ -215,6 +215,22 @@ def _swaps():
     return devices
 
 
+def _zram_sizes(path):
+    """Return (orig_data_size, compr_data_size) in bytes across kernel versions."""
+    orig_text = _read_text(path / "orig_data_size")
+    compr_text = _read_text(path / "compr_data_size")
+    if orig_text is not None and compr_text is not None:
+        return int(orig_text.strip() or "0"), int(compr_text.strip() or "0")
+    # Newer kernels (6.11+) consolidate these into mm_stat:
+    # orig_data_size compr_data_size mem_used_total mem_limit mem_used_max ...
+    mm_stat = _read_text(path / "mm_stat")
+    if mm_stat is not None:
+        parts = mm_stat.split()
+        if len(parts) >= 2:
+            return int(parts[0]), int(parts[1])
+    return 0, 0
+
+
 def _zram():
     devices = []
     try:
@@ -226,8 +242,7 @@ def _zram():
             algorithm = _read_text(path / "comp_algorithm") or ""
             match = re.search(r"\[(\w+)\]", algorithm)
             disksize = int((_read_text(path / "disksize") or "0").strip() or "0")
-            orig = int((_read_text(path / "orig_data_size") or "0").strip() or "0")
-            compr = int((_read_text(path / "compr_data_size") or "0").strip() or "0")
+            orig, compr = _zram_sizes(path)
             devices.append({
                 "name": path.name,
                 "algorithm": match.group(1) if match else algorithm.strip(),
