@@ -200,6 +200,8 @@ in
     adminNetwork = admin.network or "0.0.0.0/0";
     adminAuthorizedKeys = lib.optional ((admin.ssh_public_key or "") != "") admin.ssh_public_key;
     hardware.cpuVendor = hardware.cpu_vendor or "unknown";
+    hardware.memoryMiB = hardware.memory_mib or 0;
+    hardware.threads = hardware.threads or 0;
     performance.cpuGovernor = performance.cpu_governor or "auto";
   };
   nix2office.devices = {

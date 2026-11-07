@@ -12,6 +12,22 @@ let
     vaapi = cfg.performance.vaapi;
   };
   bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
+  # Firefox content processes: scale with CPU threads but cap by RAM so a weak
+  # machine never spawns more processes than it can keep resident. 0 = unknown.
+  processCount =
+    let
+      byRam =
+        if cfg.hardware.memoryMiB > 0 && cfg.hardware.memoryMiB < 2048 then
+          2
+        else if cfg.hardware.memoryMiB > 0 && cfg.hardware.memoryMiB < 4096 then
+          4
+        else if cfg.hardware.memoryMiB > 0 && cfg.hardware.memoryMiB < 8192 then
+          6
+        else
+          8;
+      byCores = if cfg.hardware.threads > 0 then lib.min cfg.hardware.threads 8 else 8;
+    in
+    lib.min byRam byCores;
 in
 {
   imports = [
@@ -51,6 +67,16 @@ in
       ];
       default = "intel";
       description = "CPU vendor for microcode; the assistant detects it on the target.";
+    };
+    hardware.memoryMiB = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = "Detected usable RAM in MiB; 0 means unknown. Drives adaptive Firefox memory tuning.";
+    };
+    hardware.threads = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 0;
+      description = "Detected online CPU threads; 0 means unknown. Drives the Firefox content-process count.";
     };
     bootSplash.enable = lib.mkOption {
       type = lib.types.bool;
@@ -282,7 +308,7 @@ in
       languagePacks = [ "bg" ];
       preferences = {
         "intl.locale.requested" = "bg";
-        "dom.ipc.processCount" = 2;
+        "dom.ipc.processCount" = processCount;
         "browser.tabs.unloadOnLowMemory" = true;
       }
       // lib.optionalAttrs cfg.performance.vaapi {
