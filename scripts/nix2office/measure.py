@@ -1,9 +1,9 @@
 """Bounded, read-only measurements. Short decode tests; never changes settings.
 
-``runner`` has subprocess.run's interface; tests inject it without probing the
-host. The video check measures VA-API hardware decode against software decode on
-a generated H.264 clip. Missing tools, drivers or a render node remain honest
-``unknown``, never a guess.
+runner has subprocess.run's interface; tests inject it without probing the host.
+The video check measures VA-API hardware decode against software decode on a
+generated H.264 clip. Missing tools, drivers or a render node remain honest
+unknown, never a guess.
 """
 import argparse
 import json
@@ -23,6 +23,11 @@ TIMEOUT = 30
 STATUSES = ("pass", "warning", "unknown", "not-applicable")
 UNAVAILABLE = "Няма достъп, липсва инструмент или проверката не завърши."
 DECODE_ENTRYPOINTS = ("VAEntrypointVLD", "VAEntrypointIDCT", "VAEntrypointMoComp")
+RESOLUTIONS = {
+    "360p": (640, 360),
+    "720p": (1280, 720),
+    "1080p": (1920, 1080),
+}
 
 
 def _check(status, message, **details):
@@ -89,16 +94,17 @@ def _vainfo(run):
     }
 
 
-def _decode(run, render):
+def _decode(run, render, size):
     """Return a decode measurement dict, or None when it cannot be produced."""
     if render is None:
         return None
-    clip = "/tmp/nix2office-measure-h264.mp4"
+    width, height = size
+    clip = "/tmp/nix2office-measure-h264-{}x{}.mp4".format(width, height)
     generated = run([
         "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc2=duration=5:size=640x360:rate=30",
-        "-f", "lavfi", "-i", "sine=frequency=1000:duration=5",
-        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        "-f", "lavfi", "-i", "testsrc2=duration=4:size={}x{}:rate=30".format(width, height),
+        "-f", "lavfi", "-i", "sine=frequency=1000:duration=4",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-y", clip,
     ])
     if generated is None or generated.returncode != 0:
@@ -123,17 +129,19 @@ def _decode(run, render):
     }
 
 
-def _video_decode(run):
+def _video_decode(run, resolution):
+    size = RESOLUTIONS.get(resolution, RESOLUTIONS["360p"])
+    base = {"resolution": resolution}
     facts = _vainfo(run)
     if facts is None:
         return _check("unknown", UNAVAILABLE, driver=None, h264_decode=None,
-                      vp9_decode=None, av1_decode=None, hevc_decode=None, decode=None)
+                      vp9_decode=None, av1_decode=None, hevc_decode=None, decode=None, **base)
     if facts["capability_count"] == 0:
         return _check("unknown", "vainfo не откри VA-API профили; провери драйвера и firmware.",
                       driver=facts["driver"], h264_decode=False, vp9_decode=False,
-                      av1_decode=False, hevc_decode=False, decode=None)
-    measurement = _decode(run, _render_node())
-    base = {key: facts[key] for key in ("driver", "h264_decode", "vp9_decode", "av1_decode", "hevc_decode")}
+                      av1_decode=False, hevc_decode=False, decode=None, **base)
+    base.update({key: facts[key] for key in ("driver", "h264_decode", "vp9_decode", "av1_decode", "hevc_decode")})
+    measurement = _decode(run, _render_node(), size)
     if measurement is None:
         return _check("unknown", "VA-API възможности са налични, но декодирането не можа да се измери.",
                       decode=None, **base)
@@ -152,7 +160,7 @@ def _video_decode(run):
                   decode=measurement, **base)
 
 
-def collect_report(*, runner=None, environ=None):
+def collect_report(*, runner=None, environ=None, resolution="360p"):
     """Return JSON-safe measurements. Missing tools always remain unknown."""
     env = dict(os.environ if environ is None else environ)
     env.update(LC_ALL="C", LANG="C")
@@ -167,7 +175,7 @@ def collect_report(*, runner=None, environ=None):
         "kernel_version": platform.release(),
         "rules_version": RULES_VERSION,
         "measurements": {
-            "video_decode": _video_decode(run),
+            "video_decode": _video_decode(run, resolution),
         },
     }
 
@@ -179,7 +187,7 @@ def _readable(report):
         "Kernel: " + report.get("kernel_version", "unknown") + "; правила: " + report.get("rules_version", "unknown"),
     ]
     video = report["measurements"]["video_decode"]
-    lines.append("Видео (H.264 декодиране) [" + statuses[video["status"]] + "]: " + video["message"])
+    lines.append("Видео (H.264 " + video["details"].get("resolution", "360p") + ") [" + statuses[video["status"]] + "]: " + video["message"])
     details = video["details"]
     lines.append("  VA-API драйвер: " + (details.get("driver") or "unknown"))
     lines.append("  H.264/VP9/AV1/HEVC декодиране: " + "/".join(
@@ -194,8 +202,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Кратки измервания на nix2office (без промяна на настройки).")
     parser.add_argument("--json", action="store_true", help="Изведи JSON.")
     parser.add_argument("--output", type=Path, help="Запиши JSON атомарно с права 0600.")
+    parser.add_argument("--resolution", choices=("360p", "720p", "1080p"), default="360p",
+                        help="Резолюция на тестовия H.264 клип.")
     args = parser.parse_args(argv)
-    report = collect_report()
+    report = collect_report(resolution=args.resolution)
     if args.output:
         _write_json(args.output, report)
     if args.json:

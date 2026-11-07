@@ -32,8 +32,10 @@ class FakeRunner:
         self.generate_rc = generate_rc
         self.sw_rc = sw_rc
         self.hw_rc = hw_rc
+        self.calls = []
 
     def __call__(self, args, **kwargs):
+        self.calls.append(args)
         if args[0] == "vainfo":
             if self.vainfo is None:
                 raise FileNotFoundError
@@ -48,14 +50,14 @@ class FakeRunner:
 
 
 class MeasureTests(unittest.TestCase):
-    def video(self, runner, cpu=None, render="/dev/dri/renderD128"):
+    def video(self, runner, cpu=None, render="/dev/dri/renderD128", resolution="360p"):
         patches = [patch.object(measure, "_render_node", return_value=render)]
         if cpu is not None:
             patches.append(patch.object(measure, "_child_cpu", side_effect=cpu))
         with contextlib.ExitStack() as stack:
             for p in patches:
                 stack.enter_context(p)
-            return collect_report(runner=runner, environ={})["measurements"]["video_decode"]
+            return collect_report(runner=runner, environ={}, resolution=resolution)["measurements"]["video_decode"]
 
     def test_missing_vainfo_is_unknown(self):
         self.assertEqual(self.video(FakeRunner(vainfo=None))["status"], "unknown")
@@ -93,6 +95,13 @@ class MeasureTests(unittest.TestCase):
     def test_no_render_node_is_unknown(self):
         video = self.video(FakeRunner(), render=None)
         self.assertEqual(video["status"], "unknown")
+
+    def test_resolution_controls_generated_clip(self):
+        runner = FakeRunner()
+        video = self.video(runner, cpu=[0.0, 2.0, 2.0, 2.5], resolution="720p")
+        generate = next(c for c in runner.calls if c[0] == "ffmpeg" and "-c:v" in c)
+        self.assertTrue(any("size=1280x720" in a for a in generate))
+        self.assertEqual(video["details"]["resolution"], "720p")
 
     def test_report_is_read_only_and_structured(self):
         report = collect_report(runner=FakeRunner(), environ={})
