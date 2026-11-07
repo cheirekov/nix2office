@@ -5,6 +5,7 @@ pkgs.writeShellApplication {
     python3
     libva-utils
     ffmpeg-full
+    systemd
   ];
   text = ''
     exec ${pkgs.python3}/bin/python ${../scripts}/measure.py "$@"

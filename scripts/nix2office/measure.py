@@ -1,8 +1,8 @@
 """Bounded, read-only measurements. Short decode tests; never changes settings.
 
 runner has subprocess.run's interface; tests inject it without probing the host.
-The video check measures VA-API hardware decode against software decode on a
-generated H.264 clip. Missing tools, drivers or a render node remain honest
+Video measures VA-API decode against software decode; memory records zram, swap,
+swappiness, OOM daemons and PSI pressure. Missing tools or devices remain honest
 unknown, never a guess.
 """
 import argparse
@@ -160,7 +160,138 @@ def _video_decode(run, resolution):
                   decode=measurement, **base)
 
 
-def collect_report(*, runner=None, environ=None, resolution="360p"):
+def _read_text(path):
+    try:
+        return Path(path).read_text(encoding="ascii", errors="replace")
+    except OSError:
+        return None
+
+
+def _meminfo():
+    text = _read_text("/proc/meminfo")
+    if text is None:
+        return {}
+    fields = {}
+    for line in text.splitlines():
+        key, sep, rest = line.partition(":")
+        if sep and rest.split():
+            fields[key.strip()] = int(rest.split()[0])
+    return fields
+
+
+def _swappiness():
+    text = _read_text("/proc/sys/vm/swappiness")
+    if text is None:
+        return None
+    try:
+        return int(text.strip())
+    except ValueError:
+        return None
+
+
+def _swaps():
+    text = _read_text("/proc/swaps")
+    if text is None:
+        return []
+    devices = []
+    for line in text.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 5:
+            try:
+                devices.append({
+                    "device": parts[0],
+                    "size_mib": int(parts[2]) // 1024,
+                    "used_mib": int(parts[3]) // 1024,
+                    "priority": int(parts[4]),
+                })
+            except ValueError:
+                continue
+    return devices
+
+
+def _zram():
+    devices = []
+    try:
+        paths = sorted(Path("/sys/block").glob("zram*"))
+    except OSError:
+        return []
+    for path in paths:
+        try:
+            algorithm = _read_text(path / "comp_algorithm") or ""
+            match = re.search(r"\[(\w+)\]", algorithm)
+            disksize = int((_read_text(path / "disksize") or "0").strip() or "0")
+            orig = int((_read_text(path / "orig_data_size") or "0").strip() or "0")
+            compr = int((_read_text(path / "compr_data_size") or "0").strip() or "0")
+            devices.append({
+                "name": path.name,
+                "algorithm": match.group(1) if match else algorithm.strip(),
+                "disksize_mib": disksize // (1024 * 1024),
+                "data_mib": round(orig / (1024 * 1024), 3),
+                "compressed_mib": round(compr / (1024 * 1024), 3),
+                "ratio": round(orig / compr, 3) if compr > 0 else None,
+            })
+        except (OSError, ValueError):
+            continue
+    return devices
+
+
+def _pressure():
+    text = _read_text("/proc/pressure/memory")
+    if text is None:
+        return {}
+    result = {}
+    for line in text.splitlines():
+        if line.startswith("some"):
+            match = re.search(r"avg60=([0-9.]+)", line)
+            result["some_60s"] = float(match.group(1)) if match else None
+        elif line.startswith("full"):
+            match = re.search(r"avg60=([0-9.]+)", line)
+            result["full_60s"] = float(match.group(1)) if match else None
+    return result
+
+
+def _oom(run):
+    states = {}
+    for unit in ("systemd-oomd", "earlyoom"):
+        result = run(["systemctl", "is-active", unit])
+        states[unit] = (result.stdout or "").strip() if result is not None else "unknown"
+    return states
+
+
+def _memory(run):
+    mem = _meminfo()
+    if not mem:
+        return _check("unknown", UNAVAILABLE)
+    total_mib = mem.get("MemTotal", 0) // 1024
+    available_mib = mem.get("MemAvailable", 0) // 1024
+    zram = _zram()
+    swappiness = _swappiness()
+    swaps = _swaps()
+    oom = _oom(run)
+    psi = _pressure()
+    disk_swap_used = sum(d["used_mib"] for d in swaps if not d["device"].startswith("/dev/zram"))
+    warnings = []
+    status = "pass"
+    if not zram:
+        status = "warning"
+        warnings.append("Няма активен zram; паметта се swap-ва само към диск.")
+    if psi.get("full_60s") is not None and psi["full_60s"] > 10:
+        status = "warning"
+        warnings.append("PSI full 60s = {} (натиск върху паметта).".format(psi["full_60s"]))
+    if available_mib < 128:
+        status = "warning"
+        warnings.append("Наличната RAM е под 128 MiB.")
+    if disk_swap_used > 0:
+        status = "warning"
+        warnings.append("Използва се дисков swap ({} MiB).".format(disk_swap_used))
+    message = "; ".join(warnings) if warnings else "В момента няма отчетен натиск върху паметта."
+    return _check(status, message,
+                  mem_total_mib=total_mib, mem_available_mib=available_mib,
+                  swappiness=swappiness, zram=zram, swaps=swaps, oom=oom, psi=psi,
+                  disk_swap_used_mib=disk_swap_used)
+
+
+def collect_report(*, runner=None, environ=None, resolution="360p", memory_only=False):
     """Return JSON-safe measurements. Missing tools always remain unknown."""
     env = dict(os.environ if environ is None else environ)
     env.update(LC_ALL="C", LANG="C")
@@ -169,14 +300,15 @@ def collect_report(*, runner=None, environ=None, resolution="360p"):
     if driver_dir:
         env["LIBVA_DRIVERS_PATH"] = driver_dir
     run = lambda args: _run(runner, args, env)
+    measurements = {"memory": _memory(run)}
+    if not memory_only:
+        measurements["video_decode"] = _video_decode(run, resolution)
     return {
         "schema_version": 1,
         "read_only": True,
         "kernel_version": platform.release(),
         "rules_version": RULES_VERSION,
-        "measurements": {
-            "video_decode": _video_decode(run, resolution),
-        },
+        "measurements": measurements,
     }
 
 
@@ -186,15 +318,18 @@ def _readable(report):
         "nix2office — измервания (кратки, само за четене)",
         "Kernel: " + report.get("kernel_version", "unknown") + "; правила: " + report.get("rules_version", "unknown"),
     ]
-    video = report["measurements"]["video_decode"]
-    lines.append("Видео (H.264 " + video["details"].get("resolution", "360p") + ") [" + statuses[video["status"]] + "]: " + video["message"])
-    details = video["details"]
-    lines.append("  VA-API драйвер: " + (details.get("driver") or "unknown"))
-    lines.append("  H.264/VP9/AV1/HEVC декодиране: " + "/".join(
-        "да" if details.get(k) else "не" for k in ("h264_decode", "vp9_decode", "av1_decode", "hevc_decode")))
-    decode = details.get("decode")
-    if decode:
-        lines.append("  CPU (hardware/software, секунди): {}/{}".format(decode.get("hw_cpu_s"), decode.get("sw_cpu_s")))
+    video = report["measurements"].get("video_decode")
+    if video:
+        lines.append("Видео (H.264 " + video["details"].get("resolution", "360p") + ") [" + statuses[video["status"]] + "]: " + video["message"])
+    memory = report["measurements"].get("memory")
+    if memory:
+        lines.append("Памет [" + statuses[memory["status"]] + "]: " + memory["message"])
+        d = memory["details"]
+        lines.append("  RAM: общо {}/налично {} MiB; swappiness {}".format(d.get("mem_total_mib"), d.get("mem_available_mib"), d.get("swappiness")))
+        if d.get("zram"):
+            lines.append("  zram: " + ", ".join("{}={}/ratio {}".format(z["algorithm"], z["disksize_mib"], z["ratio"]) for z in d["zram"]))
+        lines.append("  oom: systemd-oomd={}, earlyoom={}".format(d.get("oom", {}).get("systemd-oomd"), d.get("oom", {}).get("earlyoom")))
+        lines.append("  PSI full 60s: {}".format(d.get("psi", {}).get("full_60s")))
     return "\n".join(lines)
 
 
@@ -204,8 +339,9 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Запиши JSON атомарно с права 0600.")
     parser.add_argument("--resolution", choices=("360p", "720p", "1080p"), default="360p",
                         help="Резолюция на тестовия H.264 клип.")
+    parser.add_argument("--memory-only", action="store_true", help="Само измерване на паметта (без видео).")
     args = parser.parse_args(argv)
-    report = collect_report(resolution=args.resolution)
+    report = collect_report(resolution=args.resolution, memory_only=args.memory_only)
     if args.output:
         _write_json(args.output, report)
     if args.json:

@@ -1,11 +1,10 @@
-"""Focused checks for the bounded video/decode measurement."""
-import io
+"""Focused checks for the bounded video/decode and memory measurements."""
+import contextlib
 import subprocess
 import sys
 from pathlib import Path
 import unittest
 from unittest.mock import patch
-import contextlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -103,10 +102,37 @@ class MeasureTests(unittest.TestCase):
         self.assertTrue(any("size=1280x720" in a for a in generate))
         self.assertEqual(video["details"]["resolution"], "720p")
 
+    def memory(self, meminfo=None, zram=None, swappiness=60, swaps=None, pressure=None):
+        patches = [
+            patch.object(measure, "_meminfo", return_value=meminfo or {"MemTotal": 1600 * 1024, "MemAvailable": 900 * 1024}),
+            patch.object(measure, "_zram", return_value=zram if zram is not None else [
+                {"name": "zram0", "algorithm": "zstd", "disksize_mib": 838, "data_mib": 100.0, "compressed_mib": 40.0, "ratio": 2.5}]),
+            patch.object(measure, "_swappiness", return_value=swappiness),
+            patch.object(measure, "_swaps", return_value=swaps if swaps is not None else []),
+            patch.object(measure, "_pressure", return_value=pressure or {"some_60s": 0.0, "full_60s": 0.0}),
+        ]
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            return collect_report(runner=FakeRunner(), environ={})["measurements"]["memory"]
+
+    def test_memory_healthy_is_pass(self):
+        memory = self.memory()
+        self.assertEqual(memory["status"], "pass")
+        self.assertEqual(memory["details"]["swappiness"], 60)
+        self.assertEqual(memory["details"]["zram"][0]["algorithm"], "zstd")
+
+    def test_memory_no_zram_is_warning(self):
+        self.assertEqual(self.memory(zram=[])["status"], "warning")
+
+    def test_memory_disk_swap_is_warning(self):
+        memory = self.memory(swaps=[{"device": "/dev/sda2", "size_mib": 4096, "used_mib": 100, "priority": 10}])
+        self.assertEqual(memory["status"], "warning")
+
     def test_report_is_read_only_and_structured(self):
         report = collect_report(runner=FakeRunner(), environ={})
         self.assertTrue(report["read_only"])
-        self.assertEqual(set(report["measurements"]), {"video_decode"})
+        self.assertEqual(set(report["measurements"]), {"video_decode", "memory"})
         self.assertIn("rules_version", report)
 
 
