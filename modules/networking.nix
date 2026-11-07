@@ -115,6 +115,14 @@ in
           };
         };
       };
+      # Samba binds once interfaces are up; do not delay boot on full online (WiFi).
+      systemd.services.samba-nmbd.after = lib.mkForce [ "network.target" ];
+      systemd.services.samba-nmbd.wants = lib.mkForce [ "network.target" ];
+      systemd.services.samba-smbd.after = lib.mkForce [
+        "network.target"
+        "samba-nmbd.service"
+      ];
+      systemd.services.samba-smbd.wants = lib.mkForce [ "network.target" ];
       systemd.services.wsdd = {
         description = "Web Services Dynamic Discovery (WSD) host for Samba";
         after = [ "network-online.target" ];
