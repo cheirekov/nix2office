@@ -100,11 +100,11 @@ in
       description = "RustDesk office support (LightDM and desktop)";
       wantedBy = [ "multi-user.target" ];
       wants = [
-        "network-online.target"
+        "network.target"
         "display-manager.service"
       ];
       after = [
-        "network-online.target"
+        "network.target"
         "display-manager.service"
         "systemd-user-sessions.service"
         "sops-install-secrets.service"

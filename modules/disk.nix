@@ -36,6 +36,8 @@ in
     boot.loader.systemd-boot.enable = !bios;
     boot.loader.systemd-boot.configurationLimit = 5;
     boot.loader.efi.canTouchEfiVariables = !bios;
+    # Two seconds is enough to pick a previous generation, without a long menu wait.
+    boot.loader.timeout = 2;
     boot.initrd.availableKernelModules = [
       "ahci"
       "nvme"
