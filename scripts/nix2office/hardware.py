@@ -193,9 +193,10 @@ def eligible_disks(inventory):
 def recommendation(inventory):
     memory = inventory.get("memory_mib", 0)
     threads = inventory.get("threads", 0)
-    # Family 14h/16h are AMD's Bobcat/Jaguar/Puma low-power CPUs. Four cores alone
-    # do not make these a fast desktop. A low reported policy maximum is also
-    # a conservative signal, never a cross-architecture performance benchmark.
+    # AMD Family 0x14 (Bobcat) and 0x16 (Jaguar/Puma) are low-power cores; /proc
+    # reports them as decimal family 20 and 22. Four cores alone do not make
+    # these a fast desktop. A low reported policy maximum is also a conservative
+    # signal, never a cross-architecture performance benchmark.
     legacy_amd = inventory.get("cpu_vendor") == "amd" and inventory.get("cpu_family") in (20, 22)
     low_clock = 0 < inventory.get("cpu_max_mhz", 0) <= 1600
     light = memory < 4096 or threads <= 2 or legacy_amd or low_clock
@@ -257,13 +258,7 @@ def hardware_review(inventory):
         if d['driver'] in GPU_MODULES:
             modules.add(d['driver'])
         identity = d['vendor'] + ':' + d['device']
-        if identity == '10de:0641':
-            if d['driver'] == 'nouveau':
-                notes.append('GeForce 9400 GT (10de:0641): автоматично nouveau + Mesa и ранно KMS. NVIDIA 340 е историческият proprietary клон; не налагаме legacy драйвер/стар kernel за тази офис конфигурация.')
-            else:
-                review = True
-                notes.append('GeForce 9400 GT (10de:0641): няма потвърден nouveau; необходима е проверка преди графична инсталация.')
-        elif d['vendor'] == '10de':
+        if d['vendor'] == '10de':
             if d['driver'] == 'nouveau':
                 notes.append('NVIDIA ' + identity + ': запазваме открития nouveau автоматично. Избор на proprietary branch изисква съвместимост по PCI ID; само vendor ID не е достатъчен.')
             else:
