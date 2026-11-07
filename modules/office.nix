@@ -282,6 +282,8 @@ in
       languagePacks = [ "bg" ];
       preferences = {
         "intl.locale.requested" = "bg";
+        "dom.ipc.processCount" = 2;
+        "browser.tabs.unloadOnLowMemory" = true;
       }
       // lib.optionalAttrs cfg.performance.vaapi {
         "media.ffmpeg.vaapi.enabled" = true;
@@ -291,6 +293,14 @@ in
         "media.av1.enabled" = false;
       };
       preferencesStatus = "default";
+      policies = {
+        ExtensionSettings = {
+          "uBlock0@raymondhill.net" = {
+            installation_mode = "force_installed";
+            install_url = "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi";
+          };
+        };
+      };
     };
     zramSwap = {
       enable = true;
