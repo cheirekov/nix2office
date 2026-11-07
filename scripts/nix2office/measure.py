@@ -310,9 +310,11 @@ def _probe(probe_mib, total_mib):
     disk_before = _disk_swap_used()
     buf = mmap.mmap(-1, size)
     try:
-        chunk = bytes([0xAA]) * PAGE_SIZE
-        for _ in range(size // PAGE_SIZE):
-            buf.write(chunk)
+        # Unique per page so zram does not deduplicate, but still compressible.
+        for i in range(size // PAGE_SIZE):
+            page = bytearray([0xAA]) * PAGE_SIZE
+            page[0:8] = i.to_bytes(8, "little")
+            buf.write(page)
         buf.flush()
         pageout_ok = _madvise_pageout(buf, size)
         time.sleep(1.5)
@@ -324,7 +326,7 @@ def _probe(probe_mib, total_mib):
     compressed_delta = compressed_after - compressed_before
     return {
         "probe_mib": probe_mib,
-        "pattern": "repeating 0xAA",
+        "pattern": "per-page unique, compressible",
         "pageout_ok": pageout_ok,
         "zram_data_delta_mib": round(data_delta, 3),
         "zram_compressed_delta_mib": round(compressed_delta, 3),
