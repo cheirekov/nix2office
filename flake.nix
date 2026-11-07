@@ -130,6 +130,12 @@
         program = "${self.packages.x86_64-linux.diagnose}/bin/nix2office-diagnose";
         meta.description = "Хардуерна и desktop диагностика без промяна на настройки";
       };
+      packages.x86_64-linux.measure = import ./packages/measure.nix { inherit pkgs; };
+      apps.x86_64-linux.measure = {
+        type = "app";
+        program = "${self.packages.x86_64-linux.measure}/bin/nix2office-measure";
+        meta.description = "Кратки измервания (видео декодиране и др.) без промяна на настройки";
+      };
       packages.x86_64-linux.facter = pkgs.nixos-facter;
       apps.x86_64-linux.facter = {
         type = "app";
