@@ -30,6 +30,12 @@ XFCE baseline with compositing disabled, zram and SSD TRIM. Installing one extra
 PDF tool does not itself consume RAM while it is closed; the profiles describe
 starting application sets, not different CPU acceleration levels.
 
+Firefox's content-process count is derived from the detected usable RAM and
+CPU threads: 2 below 2 GiB, 4 below 4 GiB, 6 below 8 GiB, otherwise 8, capped by
+the thread count. Inactive-tab unloading is enabled and uBlock Origin is
+force-installed, so a low-RAM machine does not waste memory on content processes
+or ad/tracker frames.
+
 ## CPU governor
 
 The template accepts an optional section:
