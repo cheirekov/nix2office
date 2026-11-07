@@ -2,11 +2,14 @@
 
 runner has subprocess.run's interface; tests inject it without probing the host.
 Video measures VA-API decode against software decode; memory records zram, swap,
-swappiness, OOM daemons and PSI pressure. Missing tools or devices remain honest
-unknown, never a guess.
+swappiness, OOM daemons, PSI pressure and an optional bounded page-out probe.
+Missing tools or devices remain honest unknown, never a guess.
 """
 import argparse
+import ctypes
+import ctypes.util
 import json
+import mmap
 import os
 from pathlib import Path
 import platform
@@ -14,12 +17,15 @@ import re
 import resource
 import subprocess
 import sys
+import time
 
 from .hardware import RULES_VERSION
 from .diagnostics import _write_json
 
 
 TIMEOUT = 30
+PAGE_SIZE = 4096
+MADV_PAGEOUT = 21
 STATUSES = ("pass", "warning", "unknown", "not-applicable")
 UNAVAILABLE = "Няма достъп, липсва инструмент или проверката не завърши."
 DECODE_ENTRYPOINTS = ("VAEntrypointVLD", "VAEntrypointIDCT", "VAEntrypointMoComp")
@@ -258,7 +264,61 @@ def _oom(run):
     return states
 
 
-def _memory(run):
+def _zram_totals():
+    devices = _zram()
+    return sum(d["data_mib"] for d in devices), sum(d["compressed_mib"] for d in devices)
+
+
+def _disk_swap_used():
+    return sum(d["used_mib"] for d in _swaps() if not d["device"].startswith("/dev/zram"))
+
+
+def _madvise_pageout(buf, size):
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(buf))
+    except (OSError, AttributeError, TypeError):
+        return False
+    return libc.madvise(ctypes.c_void_p(address), ctypes.c_size_t(size), ctypes.c_int(MADV_PAGEOUT)) == 0
+
+
+def _probe(probe_mib, total_mib):
+    """Allocate, touch, page out and measure zram; safe and bounded."""
+    if probe_mib <= 0:
+        return None
+    if total_mib:
+        probe_mib = min(probe_mib, total_mib // 3)
+    if probe_mib < 32:
+        return {"skipped": "твърде малък headroom за probe"}
+    size = probe_mib * 1024 * 1024
+    data_before, compressed_before = _zram_totals()
+    disk_before = _disk_swap_used()
+    buf = mmap.mmap(-1, size)
+    try:
+        chunk = bytes([0xAA]) * PAGE_SIZE
+        for _ in range(size // PAGE_SIZE):
+            buf.write(chunk)
+        buf.flush()
+        pageout_ok = _madvise_pageout(buf, size)
+        time.sleep(1.5)
+        data_after, compressed_after = _zram_totals()
+        disk_after = _disk_swap_used()
+    finally:
+        buf.close()
+    data_delta = data_after - data_before
+    compressed_delta = compressed_after - compressed_before
+    return {
+        "probe_mib": probe_mib,
+        "pattern": "repeating 0xAA",
+        "pageout_ok": pageout_ok,
+        "zram_data_delta_mib": round(data_delta, 3),
+        "zram_compressed_delta_mib": round(compressed_delta, 3),
+        "ratio": round(data_delta / compressed_delta, 3) if compressed_delta > 0 else None,
+        "disk_swap_used_delta_mib": round(disk_after - disk_before, 3),
+    }
+
+
+def _memory(run, probe_mib=0):
     mem = _meminfo()
     if not mem:
         return _check("unknown", UNAVAILABLE)
@@ -269,7 +329,8 @@ def _memory(run):
     swaps = _swaps()
     oom = _oom(run)
     psi = _pressure()
-    disk_swap_used = sum(d["used_mib"] for d in swaps if not d["device"].startswith("/dev/zram"))
+    disk_swap_used = _disk_swap_used()
+    probe = _probe(probe_mib, total_mib)
     warnings = []
     status = "pass"
     if not zram:
@@ -288,10 +349,10 @@ def _memory(run):
     return _check(status, message,
                   mem_total_mib=total_mib, mem_available_mib=available_mib,
                   swappiness=swappiness, zram=zram, swaps=swaps, oom=oom, psi=psi,
-                  disk_swap_used_mib=disk_swap_used)
+                  disk_swap_used_mib=disk_swap_used, probe=probe)
 
 
-def collect_report(*, runner=None, environ=None, resolution="360p", memory_only=False):
+def collect_report(*, runner=None, environ=None, resolution="360p", memory_only=False, probe_mib=0):
     """Return JSON-safe measurements. Missing tools always remain unknown."""
     env = dict(os.environ if environ is None else environ)
     env.update(LC_ALL="C", LANG="C")
@@ -300,7 +361,7 @@ def collect_report(*, runner=None, environ=None, resolution="360p", memory_only=
     if driver_dir:
         env["LIBVA_DRIVERS_PATH"] = driver_dir
     run = lambda args: _run(runner, args, env)
-    measurements = {"memory": _memory(run)}
+    measurements = {"memory": _memory(run, probe_mib)}
     if not memory_only:
         measurements["video_decode"] = _video_decode(run, resolution)
     return {
@@ -330,6 +391,9 @@ def _readable(report):
             lines.append("  zram: " + ", ".join("{}={}/ratio {}".format(z["algorithm"], z["disksize_mib"], z["ratio"]) for z in d["zram"]))
         lines.append("  oom: systemd-oomd={}, earlyoom={}".format(d.get("oom", {}).get("systemd-oomd"), d.get("oom", {}).get("earlyoom")))
         lines.append("  PSI full 60s: {}".format(d.get("psi", {}).get("full_60s")))
+        probe = d.get("probe")
+        if probe and "ratio" in probe:
+            lines.append("  probe: {} MiB, ratio {}, disk swap delta {} MiB".format(probe["probe_mib"], probe["ratio"], probe["disk_swap_used_delta_mib"]))
     return "\n".join(lines)
 
 
@@ -340,8 +404,9 @@ def main(argv=None):
     parser.add_argument("--resolution", choices=("360p", "720p", "1080p"), default="360p",
                         help="Резолюция на тестовия H.264 клип.")
     parser.add_argument("--memory-only", action="store_true", help="Само измерване на паметта (без видео).")
+    parser.add_argument("--probe-mib", type=int, default=0, help="Разпредели MiB и измери zram ratio (0 = без probe).")
     args = parser.parse_args(argv)
-    report = collect_report(resolution=args.resolution, memory_only=args.memory_only)
+    report = collect_report(resolution=args.resolution, memory_only=args.memory_only, probe_mib=args.probe_mib)
     if args.output:
         _write_json(args.output, report)
     if args.json:

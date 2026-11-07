@@ -129,6 +129,10 @@ class MeasureTests(unittest.TestCase):
         memory = self.memory(swaps=[{"device": "/dev/sda2", "size_mib": 4096, "used_mib": 100, "priority": 10}])
         self.assertEqual(memory["status"], "warning")
 
+    def test_probe_skips_when_disabled_or_too_small(self):
+        self.assertIsNone(measure._probe(0, 1600))
+        self.assertIn("skipped", measure._probe(10, 1600))
+
     def test_report_is_read_only_and_structured(self):
         report = collect_report(runner=FakeRunner(), environ={})
         self.assertTrue(report["read_only"])
