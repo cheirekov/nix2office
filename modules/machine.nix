@@ -50,6 +50,7 @@ let
     thin_client = [
       "credentials"
       "redirect"
+      "fullscreen"
       "profiles"
     ];
     fonts = [

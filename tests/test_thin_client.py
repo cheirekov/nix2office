@@ -1,4 +1,5 @@
 """Focused checks for the RDP thin-client schema."""
+import re
 import sys
 from pathlib import Path
 import tomllib
@@ -6,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-from nix2office.config import ConfigError, dump_machine, validate_machine
+from nix2office.config import DEFAULTS, ConfigError, dump_machine, validate_machine
 from nix2office.thin_client import parse_remote_apps
 
 
@@ -68,6 +69,13 @@ class ThinClientTests(unittest.TestCase):
                 "profiles": [{"name": "x", "host": "h", "user": "u"}],
                 "fullscreen": "yes",
             }))
+
+    def test_machine_nix_allowlist_matches_schema(self):
+        machine_nix = (Path(__file__).resolve().parents[1] / "modules" / "machine.nix").read_text()
+        match = re.search(r"thin_client = \[(.*?)\]", machine_nix, re.S)
+        self.assertIsNotNone(match)
+        allowed = set(re.findall(r'"([^"]+)"', match.group(1)))
+        self.assertEqual(set(DEFAULTS["thin_client"].keys()), allowed)
 
     def test_remote_apps_keep_spaces_in_paths(self):
         path = r"C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe"
