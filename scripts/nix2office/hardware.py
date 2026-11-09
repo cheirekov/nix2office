@@ -184,6 +184,67 @@ def probe(target=None, ssh_config=None, ssh_socket=None):
     return parse_probe(result.stdout, target or "local")
 
 
+def _efi_remote(target, ssh_config, ssh_socket, remote_command):
+    if target is None:
+        return ["sh", "-c", remote_command]
+    command = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=yes",
+        "-o", "ForwardAgent=no",
+        "-o", "ConnectTimeout=10",
+    ]
+    if ssh_config:
+        command += ["-F", str(ssh_config)]
+    if ssh_socket:
+        command += ["-S", str(ssh_socket)]
+    command += [target, remote_command]
+    return command
+
+
+def parse_efi_boot_entries(text):
+    """Parse plain efibootmgr output into bootnum/active/name entries."""
+    entries = []
+    for line in text.splitlines():
+        match = re.match(r"^Boot([0-9A-Fa-f]{4})([* ]) (.+)$", line)
+        if match:
+            entries.append({
+                "bootnum": match.group(1),
+                "active": match.group(2) == "*",
+                "name": match.group(3).strip(),
+            })
+    return entries
+
+
+def efi_boot_entries(target=None, ssh_config=None, ssh_socket=None):
+    try:
+        result = subprocess.run(
+            _efi_remote(target, ssh_config, ssh_socket, "efibootmgr"),
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise ConfigError("Не мога да прочета EFI boot записите (нужна е UEFI boot и efibootmgr).") from None
+    return parse_efi_boot_entries(result.stdout)
+
+
+def efi_delete_boot_entry(target, bootnum, ssh_config=None, ssh_socket=None):
+    if not re.fullmatch(r"[0-9A-Fa-f]{4}", bootnum):
+        raise ConfigError("Невалиден EFI boot номер.")
+    try:
+        subprocess.run(
+            _efi_remote(target, ssh_config, ssh_socket, f"sudo -n efibootmgr -b {bootnum} -B"),
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise ConfigError(f"Не успях да изтрия EFI boot запис Boot{bootnum}.") from None
+
+
 def eligible_disks(inventory):
     """Never propose removable USB media or read-only disks for installation."""
     return [d for d in inventory.get("disks", [])

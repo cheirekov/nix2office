@@ -1,12 +1,13 @@
 """Interactive terminal menus; no system changes are made here."""
 import copy
 import json
+import re
 from pathlib import Path
 
 from .config import CATALOG, ConfigError, DEFAULTS, validate_machine, validate_public_key
 from .deployment import PreparationError, check_destination, summary
 from .ssh_keys import choose_public_key
-from .hardware import describe_inventory, eligible_disks, machine_hardware, probe
+from .hardware import describe_inventory, efi_boot_entries, efi_delete_boot_entry, eligible_disks, machine_hardware, probe
 
 
 class Cancelled(Exception):
@@ -39,6 +40,28 @@ def load_inventory(path):
         return value
     except (OSError, ValueError, KeyError, TypeError):
         raise ConfigError("Invalid hardware JSON; use an inventory produced by --probe.") from None
+
+
+_EFI_OS_ENTRY = re.compile(r"(?i)(linux boot|nixos|systemd|grub|ubuntu|fedora|debian|opensuse|boot manager)")
+
+
+def _offer_efi_cleanup(args, q, ask):
+    try:
+        entries = efi_boot_entries(getattr(args, "target", None), getattr(args, "ssh_config", None), getattr(args, "ssh_socket", None))
+    except ConfigError as error:
+        print(str(error))
+        return
+    stale = [e for e in entries if _EFI_OS_ENTRY.search(e["name"])]
+    if not stale:
+        return
+    choices = [q.Choice(f'{e["name"]} (Boot{e["bootnum"]})', value=e["bootnum"]) for e in stale]
+    selected = ask(q.checkbox("Открити стари EFI boot записи. Избери кои да изтрия (Space; може без):", choices=choices))
+    for bootnum in selected:
+        try:
+            efi_delete_boot_entry(getattr(args, "target", None), bootnum, getattr(args, "ssh_config", None), getattr(args, "ssh_socket", None))
+            print(f"Изтрит EFI boot запис Boot{bootnum}.")
+        except ConfigError as error:
+            print(str(error))
 
 
 def wizard(args):
@@ -136,13 +159,17 @@ def wizard(args):
     else:
         m["disk"] = field("Цял вътрешен диск /dev/disk/by-id/... (без USB/partition):", key="disk")
     probed_boot = inventory["boot_mode"] if inventory else None
-    while True:
-        m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
-        if probed_boot not in ("bios", "uefi") or m["boot_mode"] == probed_boot:
-            break
-        print(f"Rescue работи в {probed_boot}. Избери този режим или Ctrl+C и рестартирай USB в желания друг режим.")
-        q.forget("Начин на зареждане:")
+    if probed_boot in ("bios", "uefi"):
+        # The rescue boot mode is authoritative: systemd-boot needs the UEFI runtime,
+        # and the installer refuses a BIOS target from a UEFI rescue. Do not offer the
+        # mode that would fail later.
         m["boot_mode"] = probed_boot
+        label = "UEFI — systemd-boot" if probed_boot == "uefi" else "Legacy BIOS — GRUB"
+        print(f"Rescue работи в {'UEFI' if probed_boot == 'uefi' else 'Legacy BIOS'}; използваме {label}.")
+        if probed_boot == "uefi" and not args.hardware_json:
+            _offer_efi_cleanup(args, q, ask)
+    else:
+        m["boot_mode"] = select("Начин на зареждане:", [("bios", "Legacy BIOS — GRUB"), ("uefi", "UEFI — systemd-boot")], m["boot_mode"])
     m["hostname"] = field("Име на компютъра:", m["hostname"], key="hostname")
     m["user"]["name"] = field("Потребителско име за вход (латиница):", m["user"]["name"], "user", "name")
     m["user"]["full_name"] = field("Име за показване (може на кирилица):", m["user"]["full_name"], "user", "full_name")

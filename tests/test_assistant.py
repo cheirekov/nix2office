@@ -15,7 +15,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from nix2office.config import ConfigError, dump_machine, validate_machine
 from nix2office.deployment import PreparationError, check_destination, pinned_source, prepare
-from nix2office.hardware import parse_probe, eligible_disks, recommendation, probe, machine_hardware
+from nix2office.hardware import parse_probe, parse_efi_boot_entries, eligible_disks, recommendation, probe, machine_hardware
 from nix2office.wizard import load_inventory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -167,6 +167,26 @@ class HardwareTests(unittest.TestCase):
             p.write_text(json.dumps(inv))
             with self.assertRaises(ConfigError):
                 load_inventory(p)
+
+    def test_efi_boot_entries_parsing(self):
+        text = (
+            "BootCurrent: 0003\n"
+            "Timeout: 1 seconds\n"
+            "BootOrder: 0003,0001,0002,0000\n"
+            "Boot0000* Linux Boot Manager\n"
+            "Boot0001* Hard Drive\n"
+            "Boot0002* USB\n"
+            "Boot0003* UEFI:  8.07\n"
+            "Boot0004  Inactive Entry\n"
+        )
+        entries = parse_efi_boot_entries(text)
+        self.assertEqual([(e["bootnum"], e["active"], e["name"]) for e in entries], [
+            ("0000", True, "Linux Boot Manager"),
+            ("0001", True, "Hard Drive"),
+            ("0002", True, "USB"),
+            ("0003", True, "UEFI:  8.07"),
+            ("0004", False, "Inactive Entry"),
+        ])
 
 
 class DeploymentTests(unittest.TestCase):
