@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "rdp-launch.py"
 _spec = importlib.util.spec_from_file_location("rdp_launch", _SCRIPT)
@@ -115,6 +115,62 @@ class RdpLaunchTests(unittest.TestCase):
             result = launch(config, "win")
             self.assertIn("prompt for credentials:i:1", result["rdp"])
             self.assertNotIn("password:s:", result["rdp"])
+
+    def test_wait_for_file_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = Path(tmp) / "secret"
+            secret.write_text("x")
+            self.assertTrue(rdp_launch.wait_for_file(str(secret), 5))
+
+    def test_wait_for_file_timeout(self):
+        with patch.object(rdp_launch.time, "sleep", return_value=None), patch.object(
+            rdp_launch.time, "monotonic", side_effect=[0.0, 0.5, 1.1]
+        ):
+            self.assertFalse(rdp_launch.wait_for_file("/definitely/missing", 1))
+
+    def test_wait_for_tcp_success(self):
+        with patch.object(rdp_launch.socket, "create_connection", return_value=MagicMock()):
+            self.assertTrue(rdp_launch.wait_for_tcp("10.0.0.1", 3389, 1))
+
+    def test_wait_for_tcp_refused_then_timeout(self):
+        with patch.object(
+            rdp_launch.socket, "create_connection", side_effect=OSError("refused")
+        ), patch.object(rdp_launch.time, "sleep", return_value=None), patch.object(
+            rdp_launch.time, "monotonic", side_effect=[0.0, 0.5, 1.1]
+        ):
+            self.assertFalse(rdp_launch.wait_for_tcp("10.0.0.1", 3389, 1))
+
+    def test_retry_loop_stops_on_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            calls = []
+
+            def fake_run_once(config_, profile_, password_file_, app_):
+                calls.append(1)
+                return 1 if len(calls) < 3 else 0
+
+            argv = ["--config", str(config), "--profile", "win", "--attempts", "3", "--backoff", "0"]
+            with patch.object(rdp_launch, "_run_once", side_effect=fake_run_once), patch.object(
+                rdp_launch.time, "sleep", return_value=None
+            ):
+                self.assertEqual(rdp_launch.main(argv), 0)
+            self.assertEqual(len(calls), 3)
+
+    def test_retry_loop_gives_up_after_attempts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            calls = []
+
+            def fake_run_once(*args):
+                calls.append(1)
+                return 1
+
+            argv = ["--config", str(config), "--profile", "win", "--attempts", "3", "--backoff", "0"]
+            with patch.object(rdp_launch, "_run_once", side_effect=fake_run_once), patch.object(
+                rdp_launch.time, "sleep", return_value=None
+            ):
+                self.assertEqual(rdp_launch.main(argv), 1)
+            self.assertEqual(len(calls), 3)
 
 
 if __name__ == "__main__":

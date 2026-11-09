@@ -9,6 +9,8 @@ let
   thin = cfg.thinClient;
   enabled = cfg.role != "office";
   thinOnly = cfg.role == "thin";
+  smartcard = builtins.elem "smartcard" thin.redirect;
+  xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
   configJson = pkgs.writeText "rdp-config.json" (
     builtins.toJSON {
       credentials = thin.credentials;
@@ -24,9 +26,7 @@ let
     }
   );
   launcher = pkgs.writeShellScript "nix2office-rdp-launch" ''
-    exec ${pkgs.python3}/bin/python ${../scripts/rdp-launch.py} \
-      --config ${configJson} \
-      --password-file ${lib.escapeShellArg thin.passwordFile} "$@"
+    exec ${pkgs.python3}/bin/python ${../scripts/rdp-launch.py} --config ${configJson} --password-file ${lib.escapeShellArg thin.passwordFile} "$@"
   '';
   entry = name: comment: exec: {
     inherit name comment exec;
@@ -57,6 +57,49 @@ let
       ) thin.profiles;
     in
     lib.listToAttrs (full ++ apps);
+  menuEntry = label: command: ''
+    <item label="${xml label}">
+      <action name="Execute"><command>${xml command}</command></action>
+    </item>'';
+  fullItems = lib.concatMapStringsSep "\n" (
+    p: menuEntry "RDP — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name}"
+  ) thin.profiles;
+  appItems = lib.concatMapStringsSep "\n" (
+    p:
+    lib.concatMapStringsSep "\n" (
+      app:
+      menuEntry "${app} (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --app ${lib.escapeShellArg app}"
+    ) p.remoteApps
+  ) thin.profiles;
+  menuXml = ''
+    <?xml version="1.0" encoding="UTF-8"?>
+    <openbox_menu xmlns="http://openbox.org/3.4/menu">
+      <menu id="root-menu" label="Nix2office">
+    ${fullItems}
+    ${appItems}
+        <separator />
+        <item label="Настройки на мрежата">
+          <action name="Execute"><command>${pkgs.networkmanagerapplet}/bin/nm-connection-editor</command></action>
+        </item>
+        <item label="Терминал">
+          <action name="Execute"><command>${pkgs.xterm}/bin/xterm</command></action>
+        </item>
+        <item label="Звук">
+          <action name="Execute"><command>${pkgs.pavucontrol}/bin/pavucontrol</command></action>
+        </item>
+        <item label="Системен монитор">
+          <action name="Execute"><command>${pkgs.xterm}/bin/xterm -e ${pkgs.htop}/bin/htop</command></action>
+        </item>
+        <separator />
+        <item label="Рестартирай">
+          <action name="Execute"><command>${pkgs.systemd}/bin/systemctl reboot</command></action>
+        </item>
+        <item label="Изключи">
+          <action name="Execute"><command>${pkgs.systemd}/bin/systemctl poweroff</command></action>
+        </item>
+      </menu>
+    </openbox_menu>
+  '';
 in
 {
   config = lib.mkIf enabled {
@@ -66,7 +109,31 @@ in
         message = "The RDP thin client requires at least one profile.";
       }
     ];
-    environment.systemPackages = [ pkgs.freerdp ];
+    environment.systemPackages = [
+      pkgs.freerdp
+    ]
+    ++ lib.optionals thinOnly [
+      pkgs.xterm
+      pkgs.networkmanagerapplet
+    ];
+    services.pcscd.enable = smartcard;
+    security.polkit = lib.mkIf thinOnly {
+      enable = true;
+      extraConfig = ''
+        polkit.addRule(function(action, subject) {
+          if (subject.user === ${builtins.toJSON cfg.user.name}) {
+            if (action.id === "org.freedesktop.login1.reboot"
+                || action.id === "org.freedesktop.login1.reboot-multiple-sessions"
+                || action.id === "org.freedesktop.login1.power-off"
+                || action.id === "org.freedesktop.login1.power-off-multiple-sessions"
+                || action.id.indexOf("org.freedesktop.NetworkManager.") === 0) {
+              return polkit.Result.YES;
+            }
+          }
+          return polkit.Result.NOT_HANDLED;
+        });
+      '';
+    };
     services.xserver.windowManager.openbox.enable = thinOnly;
     services.displayManager.autoLogin = lib.mkIf thinOnly {
       enable = true;
@@ -74,9 +141,12 @@ in
     };
     home-manager.users.${cfg.user.name} = {
       xdg.desktopEntries = entries;
+      xdg.configFile."openbox/menu.xml" = lib.mkIf thinOnly {
+        text = menuXml;
+      };
       xdg.configFile."openbox/autostart" = lib.mkIf thinOnly {
         text = ''
-          ${launcher} --profile "${(lib.head thin.profiles).name}" &
+          ${launcher} --profile "${(lib.head thin.profiles).name}" --wait-secret-timeout 60 --wait-network-timeout 120 --attempts 6 --backoff 5 &
         '';
         executable = true;
       };

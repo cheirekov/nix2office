@@ -155,6 +155,12 @@ let
     assert c.services.displayManager.defaultSession == (if office then "xfce" else "none+openbox");
     assert
       (builtins.elem "freerdp" (map lib.getName c.environment.systemPackages)) == (role != "office");
+    assert c.services.pcscd.enable == (role != "office");
+    assert !thin || builtins.hasAttr "openbox/menu.xml" home.xdg.configFile;
+    assert !thin || lib.hasInfix "--wait-network-timeout" home.xdg.configFile."openbox/autostart".text;
+    assert !thin || builtins.elem "xterm" (map lib.getName c.environment.systemPackages);
+    assert
+      !thin || builtins.elem "network-manager-applet" (map lib.getName c.environment.systemPackages);
     assert !office || home.xdg.mimeApps.defaultApplications."x-scheme-handler/https" == [ desktop ];
     assert c.hardware.bluetooth.enable == variant.services;
     assert c.services.blueman.enable == variant.services;
