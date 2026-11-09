@@ -15,12 +15,13 @@ rdp_launch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rdp_launch)
 
 
-def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False):
+def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False, unicode_keyboard=False):
     config = {
         "credentials": "interactive",
         "redirect": redirect or ["smartcard", "clipboard", "audio", "drives", "usb"],
         "home": home,
         "fullscreen": fullscreen,
+        "unicode_keyboard": unicode_keyboard,
         "profiles": profiles,
     }
     path = Path(tmp) / "rdp-config.json"
@@ -102,6 +103,17 @@ class RdpLaunchTests(unittest.TestCase):
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
             self.assertNotIn("/f", launch(config, "win")["command"])
 
+    def test_unicode_keyboard_app_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
+            self.assertIn("/kbd:unicode:on", launch(config, "win", app="Expecta")["command"])
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            self.assertNotIn("/kbd:unicode:on", launch(config, "win", app="Expecta")["command"])
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
+            self.assertNotIn("/kbd:unicode:on", launch(config, "win")["command"])
+
     def test_remote_app_alias_and_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u", "remote_apps": ["Accounting"]}])
@@ -156,7 +168,7 @@ class RdpLaunchTests(unittest.TestCase):
 
             def fake_run_once(config_, profile_, password_file_, app_):
                 calls.append(1)
-                return 1 if len(calls) < 3 else 0
+                return 141 if len(calls) < 3 else 0
 
             argv = ["--config", str(config), "--profile", "win", "--attempts", "3", "--backoff", "0"]
             with patch.object(rdp_launch, "_run_once", side_effect=fake_run_once), patch.object(
@@ -172,14 +184,30 @@ class RdpLaunchTests(unittest.TestCase):
 
             def fake_run_once(*args):
                 calls.append(1)
-                return 1
+                return 141
 
             argv = ["--config", str(config), "--profile", "win", "--attempts", "3", "--backoff", "0"]
             with patch.object(rdp_launch, "_run_once", side_effect=fake_run_once), patch.object(
                 rdp_launch.time, "sleep", return_value=None
             ):
-                self.assertEqual(rdp_launch.main(argv), 1)
+                self.assertEqual(rdp_launch.main(argv), 141)
             self.assertEqual(len(calls), 3)
+
+    def test_logoff_does_not_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            calls = []
+
+            def fake_run_once(*args):
+                calls.append(1)
+                return 2  # XF_EXIT_LOGOFF
+
+            argv = ["--config", str(config), "--profile", "win", "--attempts", "6", "--backoff", "0"]
+            with patch.object(rdp_launch, "_run_once", side_effect=fake_run_once), patch.object(
+                rdp_launch.time, "sleep", return_value=None
+            ):
+                self.assertEqual(rdp_launch.main(argv), 2)
+            self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

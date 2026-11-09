@@ -157,6 +157,11 @@ in
         default = false;
         description = "Start RDP sessions in fullscreen mode.";
       };
+      unicodeKeyboard = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Send RemoteApp input as Unicode so Cyrillic reaches the app (breaks some Ctrl+key shortcuts).";
+      };
       passwordFile = lib.mkOption {
         type = lib.types.str;
         default = "/run/secrets/rdp-password";

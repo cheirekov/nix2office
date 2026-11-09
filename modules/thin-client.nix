@@ -23,6 +23,7 @@ let
       credentials = thin.credentials;
       redirect = thin.redirect;
       fullscreen = thin.fullscreen;
+      unicode_keyboard = thin.unicodeKeyboard;
       home = "/home/${cfg.user.name}";
       profiles = map (p: {
         name = p.name;

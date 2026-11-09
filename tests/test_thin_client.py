@@ -70,6 +70,15 @@ class ThinClientTests(unittest.TestCase):
                 "fullscreen": "yes",
             }))
 
+    def test_unicode_keyboard_is_boolean(self):
+        m = validate_machine(machine("thin", {"profiles": [{"name": "x", "host": "h", "user": "u"}]}))
+        self.assertFalse(m["thin_client"]["unicode_keyboard"])
+        with self.assertRaises(ConfigError):
+            validate_machine(machine("thin", {
+                "profiles": [{"name": "x", "host": "h", "user": "u"}],
+                "unicode_keyboard": "yes",
+            }))
+
     def test_machine_nix_allowlist_matches_schema(self):
         machine_nix = (Path(__file__).resolve().parents[1] / "modules" / "machine.nix").read_text()
         match = re.search(r"thin_client = \[(.*?)\]", machine_nix, re.S)

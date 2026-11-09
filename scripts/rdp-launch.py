@@ -28,6 +28,11 @@ REDIRECT = {
     "usb": ["/usb:auto"],
 }
 
+# FreeRDP X11 exit codes that mean the connection could not be established.
+# Retrying these is useful at boot (network/server not ready). Session-end
+# codes (success=0, disconnect=1, logoff=2) and permanent auth errors must stop.
+RETRY_EXIT_CODES = frozenset({131, 133, 136, 137, 138, 139, 140, 141, 142, 143, 147, 150, 160})
+
 
 def remote_app_flag(app):
     # FreeRDP 3 wants /app:program:<path> or /app:program:||<alias>.
@@ -96,6 +101,8 @@ def _run_once(config, profile, password_file, app):
             command.extend(REDIRECT.get(key, []))
         if app:
             command.append(remote_app_flag(app))
+            if config.get("unicode_keyboard"):
+                command.append("/kbd:unicode:on")
         if config.get("fullscreen"):
             command.append("/f")
         result = subprocess.run(command, check=False)
@@ -147,8 +154,10 @@ def main(argv=None):
         if attempt > 1:
             print(f"Повтарям RDP ({attempt}/{attempts}) ...", file=sys.stderr)
         last = _run_once(config, profile, args.password_file, args.app)
-        if last == 0:
-            return 0
+        if last == 0 or last not in RETRY_EXIT_CODES:
+            # Clean session end (logout/disconnect) or a permanent error: stay
+            # at the openbox menu instead of relaunching a new session.
+            return last
         if attempt < attempts:
             time.sleep(max(0, args.backoff))
     if attempts > 1:

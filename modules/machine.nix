@@ -51,6 +51,7 @@ let
       "credentials"
       "redirect"
       "fullscreen"
+      "unicode_keyboard"
       "profiles"
     ];
     fonts = [
@@ -223,6 +224,7 @@ in
   nix2office.thinClient = {
     credentials = thin_client.credentials or "interactive";
     fullscreen = thin_client.fullscreen or false;
+    unicodeKeyboard = thin_client.unicode_keyboard or false;
     redirect =
       thin_client.redirect or [
         "smartcard"

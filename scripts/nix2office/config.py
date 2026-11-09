@@ -25,7 +25,7 @@ DEFAULTS = {
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
-    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "fullscreen": False, "profiles": []},
+    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "fullscreen": False, "unicode_keyboard": False, "profiles": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -229,6 +229,8 @@ def validate_machine(raw):
         raise ConfigError("thin_client.credentials: choose interactive or sops.")
     if type(tc["fullscreen"]) is not bool:
         raise ConfigError("thin_client.fullscreen: expected true or false.")
+    if type(tc["unicode_keyboard"]) is not bool:
+        raise ConfigError("thin_client.unicode_keyboard: expected true or false.")
     redirect_choices = {"smartcard", "clipboard", "audio", "drives", "usb"}
     if not isinstance(tc["redirect"], list) or len(tc["redirect"]) != len(set(tc["redirect"])) or any(v not in redirect_choices for v in tc["redirect"]):
         raise ConfigError("thin_client.redirect: unique names from smartcard, clipboard, audio, drives, usb.")
