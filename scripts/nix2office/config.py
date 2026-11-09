@@ -258,7 +258,7 @@ def validate_machine(raw):
             raise ConfigError("thin_client.profiles[].port: expected an integer 1..65535.")
         remote_apps = prof.get("remote_apps", [])
         if not isinstance(remote_apps, list) or any(not isinstance(v, str) or not v.strip() for v in remote_apps):
-            raise ConfigError("thin_client.profiles[].remote_apps: expected a list of non-empty names.")
+            raise ConfigError("thin_client.profiles[].remote_apps: expected a list of non-empty names or full paths.")
     if m["role"] in ("hybrid", "thin") and not profiles:
         raise ConfigError("thin_client: at least one RDP profile is required when role is hybrid or thin.")
     return m

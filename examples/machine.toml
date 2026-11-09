@@ -91,4 +91,4 @@ direct_ip_access = false # allow RustDesk direct IP on TCP 21118 (read initial I
 # host = "192.0.2.10" # Windows RDP host (IP or name)
 # user = "accountant" # Windows account
 # port = 3389
-# remote_apps = []    # RemoteApp aliases, e.g. ["Accounting"]
+# remote_apps = []    # RemoteApp: full path or published alias, e.g. ["Accounting"]

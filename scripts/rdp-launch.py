@@ -21,6 +21,15 @@ REDIRECT = {
 }
 
 
+def remote_app_flag(app):
+    # FreeRDP 3 wants /app:program:<path> or /app:program:||<alias>.
+    if app.startswith("||") or "\\" in app or "/" in app or (len(app) >= 2 and app[1] == ":"):
+        value = app
+    else:
+        value = "||" + app
+    return "/app:program:" + value
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Launch an RDP session for Nix2office.")
     parser.add_argument("--config", required=True, help="RDP config JSON produced at build time.")
@@ -65,7 +74,7 @@ def main(argv=None):
                 continue
             command.extend(REDIRECT.get(key, []))
         if args.app:
-            command.append(f"/app:||{args.app}")
+            command.append(remote_app_flag(args.app))
         subprocess.run(command, check=False)
     finally:
         try:

@@ -91,11 +91,15 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertIn("password:s:s3cret", result["rdp"])
             self.assertTrue(result["files_gone"])
 
-    def test_remote_app_flag(self):
+    def test_remote_app_alias_and_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u", "remote_apps": ["Accounting"]}])
             result = launch(config, "win", app="Accounting")
-            self.assertIn("/app:||Accounting", result["command"])
+            self.assertIn("/app:program:||Accounting", result["command"])
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            result = launch(config, "win", app=r"C:\Program Files (x86)\Expecta\ExpectaClient.exe")
+            self.assertIn(r"/app:program:C:\Program Files (x86)\Expecta\ExpectaClient.exe", result["command"])
 
     def test_unknown_profile_exits(self):
         with tempfile.TemporaryDirectory() as tmp:

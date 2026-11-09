@@ -43,7 +43,7 @@ Nix2office поддържа три роли за една машина, зада
 
 ## RemoteApp
 
-RemoteApp изисква Windows страната да публикува програмата като RemoteApp alias (например чрез RDP Wrapper/RemoteApp настройка). Alias-ът, въведен в remote_apps, трябва да съвпада с публикуваното име; launcher-ът го стартира с /app:||alias.
+RemoteApp изисква Windows страната да публикува програмата като RemoteApp (например чрез RDP Wrapper/RemoteApp настройка). В remote_apps може да се запише или пълният път до програмата, например C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe, или краткото име на публикувания alias. Launcher-ът го стартира съответно с /app:program:<път> или /app:program:||<alias>.
 
 Всеки профил получава .desktop launcher за пълна сесия, а всеки RemoteApp alias — отделен launcher. В thin режим първият профил се стартира автоматично след влизане.
 
