@@ -4,6 +4,11 @@ import copy
 from .config import ConfigError, DEFAULTS, validate_machine
 
 
+def parse_remote_apps(text):
+    """Comma-separated RemoteApp entries; spaces are kept inside each entry."""
+    return [part.strip() for part in text.split(',') if part.strip()]
+
+
 def choose(machine, q, ask):
     tc = machine['thin_client']
     while True:
@@ -24,9 +29,9 @@ def choose(machine, q, ask):
             except ValueError:
                 print('Портът трябва да е цяло число 1–65535.')
                 continue
-        apps = ask(q.text('RemoteApp alias-и (разделени със запетая; може празно):')).strip()
+        apps = ask(q.text('RemoteApp (пълен път или alias, разделени със запетая; може празно):')).strip()
         if apps:
-            profile['remote_apps'] = [a.strip() for a in apps.replace(',', ' ').split() if a.strip()]
+            profile['remote_apps'] = parse_remote_apps(apps)
         trial = copy.deepcopy(DEFAULTS)
         trial['disk'] = '/dev/disk/by-id/ata-EXAMPLE'
         trial['role'] = 'hybrid'

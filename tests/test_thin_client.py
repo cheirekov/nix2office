@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from nix2office.config import ConfigError, dump_machine, validate_machine
+from nix2office.thin_client import parse_remote_apps
 
 
 def machine(role="office", thin=None):
@@ -58,6 +59,15 @@ class ThinClientTests(unittest.TestCase):
     def test_office_ignores_thin_profiles(self):
         m = validate_machine(machine("office", {"profiles": [{"name": "win", "host": "h", "user": "u"}]}))
         self.assertEqual(m["role"], "office")
+
+    def test_remote_apps_keep_spaces_in_paths(self):
+        path = r"C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe"
+        self.assertEqual(parse_remote_apps(path), [path])
+        self.assertEqual(
+            parse_remote_apps("Accounting, " + path),
+            ["Accounting", path],
+        )
+        self.assertEqual(parse_remote_apps(" , "), [])
 
 
 if __name__ == "__main__":
