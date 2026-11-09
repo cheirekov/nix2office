@@ -79,6 +79,22 @@ class ThinClientTests(unittest.TestCase):
                 "unicode_keyboard": "yes",
             }))
 
+    def test_gfx_default_and_validation(self):
+        m = validate_machine(machine("thin", {"profiles": [{"name": "x", "host": "h", "user": "u"}]}))
+        self.assertEqual(m["thin_client"]["gfx"], "auto")
+        for value in ("rfx", "software"):
+            with self.subTest(value=value):
+                m = validate_machine(machine("thin", {
+                    "profiles": [{"name": "x", "host": "h", "user": "u"}],
+                    "gfx": value,
+                }))
+                self.assertEqual(m["thin_client"]["gfx"], value)
+        with self.assertRaises(ConfigError):
+            validate_machine(machine("thin", {
+                "profiles": [{"name": "x", "host": "h", "user": "u"}],
+                "gfx": "bogus",
+            }))
+
     def test_machine_nix_allowlist_matches_schema(self):
         machine_nix = (Path(__file__).resolve().parents[1] / "modules" / "machine.nix").read_text()
         match = re.search(r"thin_client = \[(.*?)\]", machine_nix, re.S)

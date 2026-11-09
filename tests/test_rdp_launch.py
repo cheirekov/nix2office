@@ -15,13 +15,14 @@ rdp_launch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rdp_launch)
 
 
-def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False, unicode_keyboard=False):
+def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False, unicode_keyboard=False, gfx="auto"):
     config = {
         "credentials": "interactive",
         "redirect": redirect or ["smartcard", "clipboard", "audio", "drives", "usb"],
         "home": home,
         "fullscreen": fullscreen,
         "unicode_keyboard": unicode_keyboard,
+        "gfx": gfx,
         "profiles": profiles,
     }
     path = Path(tmp) / "rdp-config.json"
@@ -29,7 +30,7 @@ def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=Fa
     return path
 
 
-def launch(config_path, profile, app=None, password_file=None):
+def launch(config_path, profile, app=None, password_file=None, shell=None):
     captured = {"command": None, "rdp": ""}
     writes = []
     created = []
@@ -64,6 +65,8 @@ def launch(config_path, profile, app=None, password_file=None):
     argv = ["--config", str(config_path), "--profile", profile]
     if app:
         argv += ["--app", app]
+    if shell:
+        argv += ["--shell", shell]
     if password_file:
         argv += ["--password-file", str(password_file)]
     with patch.object(rdp_launch.subprocess, "run", side_effect=fake_run), patch.object(
@@ -124,6 +127,54 @@ class RdpLaunchTests(unittest.TestCase):
             result = launch(config, "win", app=r"C:\Program Files (x86)\Expecta\ExpectaClient.exe")
             self.assertIn(r"/app:program:C:\Program Files (x86)\Expecta\ExpectaClient.exe", result["command"])
 
+    def test_alternate_shell_uses_shell_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            result = launch(config, "win", shell=r"C:\Program Files (x86)\Expecta\ExpectaClient.exe")
+            self.assertIn(r"/shell:C:\Program Files (x86)\Expecta\ExpectaClient.exe", result["command"])
+            self.assertNotIn("/app:program:", result["command"])
+
+    def test_alternate_shell_ignored_for_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            result = launch(config, "win", shell="Accounting")
+            self.assertNotIn("/shell:", result["command"])
+            self.assertNotIn("/app:program:", result["command"])
+
+    def test_shell_does_not_use_unicode_keyboard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
+            result = launch(config, "win", shell=r"C:\App.exe")
+            self.assertNotIn("/kbd:unicode:on", result["command"])
+
+    def test_gfx_auto_adds_no_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            command = launch(config, "win")["command"]
+            self.assertNotIn("/gfx:RFX", command)
+            self.assertNotIn("/gdi:sw", command)
+
+    def test_gfx_rfx(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="rfx")
+            command = launch(config, "win")["command"]
+            self.assertIn("/gfx:RFX", command)
+            self.assertNotIn("/gdi:sw", command)
+
+    def test_gfx_software(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="software")
+            command = launch(config, "win")["command"]
+            self.assertIn("/gfx:RFX", command)
+            self.assertIn("/gdi:sw", command)
+
+    def test_app_and_shell_mutually_exclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            argv = ["--config", str(config), "--profile", "win", "--app", "X", "--shell", "Y"]
+            with self.assertRaises(SystemExit), patch("sys.stderr", new=io.StringIO()):
+                rdp_launch.main(argv)
+
     def test_unknown_profile_exits(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
@@ -166,7 +217,7 @@ class RdpLaunchTests(unittest.TestCase):
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
             calls = []
 
-            def fake_run_once(config_, profile_, password_file_, app_):
+            def fake_run_once(config_, profile_, password_file_, app_, shell_=None):
                 calls.append(1)
                 return 141 if len(calls) < 3 else 0
 

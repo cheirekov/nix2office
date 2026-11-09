@@ -162,6 +162,15 @@ in
         default = false;
         description = "Send RemoteApp input as Unicode so Cyrillic reaches the app (breaks some Ctrl+key shortcuts).";
       };
+      gfx = lib.mkOption {
+        type = lib.types.enum [
+          "auto"
+          "rfx"
+          "software"
+        ];
+        default = "auto";
+        description = "RDP rendering path: auto (negotiated, usually H.264), rfx (RemoteFX codec), or software (RemoteFX plus software GDI).";
+      };
       passwordFile = lib.mkOption {
         type = lib.types.str;
         default = "/run/secrets/rdp-password";

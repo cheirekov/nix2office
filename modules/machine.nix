@@ -52,6 +52,7 @@ let
       "redirect"
       "fullscreen"
       "unicode_keyboard"
+      "gfx"
       "profiles"
     ];
     fonts = [
@@ -225,6 +226,7 @@ in
     credentials = thin_client.credentials or "interactive";
     fullscreen = thin_client.fullscreen or false;
     unicodeKeyboard = thin_client.unicode_keyboard or false;
+    gfx = thin_client.gfx or "auto";
     redirect =
       thin_client.redirect or [
         "smartcard"

@@ -33,6 +33,7 @@ Nix2office поддържа три роли за една машина, зада
 - thin_client.redirect — подмножество от smartcard, clipboard, audio, drives, usb.
 - thin_client.fullscreen — true/false (по подразбиране false). Стартира RDP сесията в пълен екран; излизане/връщане с Ctrl+Alt+Enter.
 - thin_client.unicode_keyboard — true/false (по подразбиране false). При RemoteApp изпраща въвеждането като Unicode, за да достигне кирилица до програмата; може да наруши някои Ctrl+буква комбинации.
+- thin_client.gfx — auto, rfx или software (по подразбиране auto). Начин на изобразяване на RDP: auto (договаря се, обикновено H.264), rfx (RemoteFX кодек вместо H.264) или software (RemoteFX + софтуерен GDI). Полезно за диагностика на „черни“ области при стари програми.
 - thin_client.profiles — един или повече RDP профила. Всеки има name, host, user, port (по подразбиране 3389) и remote_apps (списък от RemoteApp alias-и).
 - Ролята hybrid или thin изисква поне един профил.
 
@@ -48,7 +49,7 @@ Nix2office поддържа три роли за една машина, зада
 
 RemoteApp изисква Windows страната да публикува програмата като RemoteApp (например чрез RDP Wrapper/RemoteApp настройка). В remote_apps може да се запише или пълният път до програмата, например C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe, или краткото име на публикувания alias. Launcher-ът го стартира съответно с /app:program:<път> или /app:program:||<alias>.
 
-Всеки профил получава .desktop launcher за пълна сесия, а всеки RemoteApp alias — отделен launcher. В thin режим първият профил се стартира автоматично след влизане.
+Всеки профил получава .desktop launcher за пълна сесия, а всеки RemoteApp alias — отделен launcher. Запис в remote_apps, който е пълен път до изпълним файл, получава и втори launcher „Alternate shell“ (виж по-долу). В thin режим първият профил се стартира автоматично след влизане.
 
 В менюто и на работния плот RemoteApp записите се показват с кратко име: за пълен път се взима името на програмата без разширението (например ExpectaClient), а кратък alias се показва както е.
 
@@ -58,7 +59,21 @@ RemoteApp изисква Windows страната да публикува про
 
 Клиентска алтернатива, когато програмата трябва да приема кирилица: unicode_keyboard = true кара FreeRDP да изпраща въвеждането като Unicode (вместо scancodes), така че кирилицата достига до RemoteApp програмата. Цената е, че някои Ctrl+буква комбинации може да спрат да се разпознават.
 
-Друг вариант е да не се използва RemoteApp, а програмата да се пусне като "alternate shell" в пълна сесия (/shell:app:alias или /shell:път). Тогава клавиатурата се държи като в пълна сесия (Alt+Shift работи), но програмата е сама в сесията без Windows taskbar.
+Друг вариант е да не се използва RemoteApp, а програмата да се пусне като „alternate shell“ в пълна сесия (/shell:<път до изпълнимия файл>). Тогава клавиатурата се държи като в пълна сесия (Alt+Shift работи), но програмата е сама в сесията без Windows taskbar. Този режим изисква пълен път до изпълнимия файл; кратко публикувано име (alias) няма път, който да се подаде на /shell.
+
+## Alternate shell (пълна сесия само за една програма)
+
+При RemoteApp отделните прозорци се изобразяват по различен път от цял десктоп. Някои стари Windows програми (често Delphi/старо GDI) в RemoteApp показват черни подменюта или увисват. За тях се генерира допълнителен launcher „Alternate shell“: FreeRDP влиза в пълна сесия, но вместо explorer.exe стартира избраната програма (чрез /shell:<път>). Това запазва нормалното изобразяване и клавиатурата на пълна сесия, а потребителят вижда само самата програма без taskbar.
+
+Alternate shell launcher се създава само когато записът в remote_apps е пълен път до изпълним файл (например C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe). За кратко alias име няма такъв launcher.
+
+## Диагностика на изобразяването
+
+Ако програма в RemoteApp показва черни области или увисва, първо се опита Alternate shell режимът. Ако проблемът трябва да се провери и в RemoteApp, thin_client.gfx превключва пътя на изобразяване:
+
+- auto — договаря се с Windows (обикновено H.264/AVC420 през VA-API).
+- rfx — принудителен RemoteFX кодек вместо H.264.
+- software — RemoteFX + софтуерен GDI (най-консервативният път).
 
 ## Видео
 

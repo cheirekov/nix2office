@@ -244,6 +244,9 @@ let
     assert !hybrid || builtins.hasAttr "rdp-app-win-1" home.xdg.desktopEntries;
     assert !hybrid || home.xdg.desktopEntries."rdp-app-win-1".name == "Accounting";
     assert !hybrid || home.xdg.desktopEntries."rdp-app-win-2".name == "ExpectaClient";
+    assert !hybrid || builtins.hasAttr "rdp-shell-win-1" home.xdg.desktopEntries;
+    assert !hybrid || home.xdg.desktopEntries."rdp-shell-win-1".name == "ExpectaClient (Alternate shell)";
+    assert !hybrid || lib.hasInfix "--shell" home.xdg.desktopEntries."rdp-shell-win-1".exec;
     assert !thin || builtins.hasAttr "rdp-full-1" home.xdg.desktopEntries;
     {
       drv = c.system.build.toplevel.drvPath;

@@ -34,13 +34,28 @@ REDIRECT = {
 RETRY_EXIT_CODES = frozenset({131, 133, 136, 137, 138, 139, 140, 141, 142, 143, 147, 150, 160})
 
 
+def is_program_path(app):
+    """True for a full executable path, False for a bare published RemoteApp alias."""
+    return (
+        app.startswith("||")
+        or "\\" in app
+        or "/" in app
+        or (len(app) >= 2 and app[1] == ":")
+    )
+
+
 def remote_app_flag(app):
     # FreeRDP 3 wants /app:program:<path> or /app:program:||<alias>.
-    if app.startswith("||") or "\\" in app or "/" in app or (len(app) >= 2 and app[1] == ":"):
-        value = app
-    else:
-        value = "||" + app
+    value = app if is_program_path(app) else "||" + app
     return "/app:program:" + value
+
+
+def alternate_shell_flags(app):
+    # /shell needs the real executable path on the server. A bare published
+    # alias has no path to hand over, so it has no alternate-shell form.
+    if is_program_path(app) and not app.startswith("||"):
+        return ["/shell:" + app]
+    return []
 
 
 def wait_for_file(path, timeout):
@@ -69,7 +84,7 @@ def wait_for_tcp(host, port, timeout):
     return False
 
 
-def _run_once(config, profile, password_file, app):
+def _run_once(config, profile, password_file, app=None, shell=None):
     host = profile.get("host", "")
     user = profile.get("user", "")
     port = profile.get("port", 3389)
@@ -99,10 +114,18 @@ def _run_once(config, profile, password_file, app):
                     command.append(f"/drive:home,{home}")
                 continue
             command.extend(REDIRECT.get(key, []))
-        if app:
+        if shell:
+            command.extend(alternate_shell_flags(shell))
+        elif app:
             command.append(remote_app_flag(app))
             if config.get("unicode_keyboard"):
                 command.append("/kbd:unicode:on")
+        gfx = config.get("gfx", "auto")
+        if gfx == "rfx":
+            command.append("/gfx:RFX")
+        elif gfx == "software":
+            command.append("/gfx:RFX")
+            command.append("/gdi:sw")
         if config.get("fullscreen"):
             command.append("/f")
         result = subprocess.run(command, check=False)
@@ -120,6 +143,7 @@ def main(argv=None):
     parser.add_argument("--password-file", help="Optional decrypted password file (sops).")
     parser.add_argument("--profile", required=True, help="Profile name from the config.")
     parser.add_argument("--app", help="Optional RemoteApp alias.")
+    parser.add_argument("--shell", help="Optional program path to run as the alternate shell (full session).")
     parser.add_argument("--wait-secret-timeout", type=int, default=0,
                         help="Kiosk: seconds to wait for the sops password file.")
     parser.add_argument("--wait-network-timeout", type=int, default=0,
@@ -129,6 +153,8 @@ def main(argv=None):
     parser.add_argument("--backoff", type=int, default=5,
                         help="Kiosk: seconds to sleep between attempts.")
     args = parser.parse_args(argv)
+    if args.app and args.shell:
+        parser.error("--app and --shell are mutually exclusive.")
 
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     profile = next((p for p in config.get("profiles", []) if p.get("name") == args.profile), None)
@@ -153,7 +179,7 @@ def main(argv=None):
     for attempt in range(1, attempts + 1):
         if attempt > 1:
             print(f"Повтарям RDP ({attempt}/{attempts}) ...", file=sys.stderr)
-        last = _run_once(config, profile, args.password_file, args.app)
+        last = _run_once(config, profile, args.password_file, args.app, args.shell)
         if last == 0 or last not in RETRY_EXIT_CODES:
             # Clean session end (logout/disconnect) or a permanent error: stay
             # at the openbox menu instead of relaunching a new session.

@@ -18,12 +18,19 @@ let
       trimmed = lib.removeSuffix ".exe" base;
     in
     if trimmed == "" then app else trimmed;
+  isPath =
+    app:
+    lib.substring 0 2 app == "||"
+    || lib.hasInfix "\\" app
+    || lib.hasInfix "/" app
+    || (lib.stringLength app >= 2 && lib.substring 1 1 app == ":");
   configJson = pkgs.writeText "rdp-config.json" (
     builtins.toJSON {
       credentials = thin.credentials;
       redirect = thin.redirect;
       fullscreen = thin.fullscreen;
       unicode_keyboard = thin.unicodeKeyboard;
+      gfx = thin.gfx;
       home = "/home/${cfg.user.name}";
       profiles = map (p: {
         name = p.name;
@@ -64,8 +71,17 @@ let
           )
         ) p.remoteApps
       ) thin.profiles;
+      shells = lib.concatMap (
+        p:
+        lib.imap1 (
+          j: app:
+          lib.nameValuePair "rdp-shell-${p.name}-${toString j}" (
+            entry "${appLabel app} (Alternate shell)" app ''${launcher} --profile "${p.name}" --shell "${app}"''
+          )
+        ) (builtins.filter isPath p.remoteApps)
+      ) thin.profiles;
     in
-    lib.listToAttrs (full ++ apps);
+    lib.listToAttrs (full ++ apps ++ shells);
   menuEntry = label: command: ''
     <item label="${xml label}">
       <action name="Execute"><command>${xml command}</command></action>
@@ -80,12 +96,20 @@ let
       menuEntry "${appLabel app} (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --app ${lib.escapeShellArg app}"
     ) p.remoteApps
   ) thin.profiles;
+  shellItems = lib.concatMapStringsSep "\n" (
+    p:
+    lib.concatMapStringsSep "\n" (
+      app:
+      menuEntry "${appLabel app} - Alternate shell (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --shell ${lib.escapeShellArg app}"
+    ) (builtins.filter isPath p.remoteApps)
+  ) thin.profiles;
   menuXml = ''
     <?xml version="1.0" encoding="UTF-8"?>
     <openbox_menu xmlns="http://openbox.org/3.4/menu">
       <menu id="root-menu" label="Nix2office">
     ${fullItems}
     ${appItems}
+    ${shellItems}
         <separator />
         <item label="Настройки на мрежата">
           <action name="Execute"><command>${pkgs.networkmanagerapplet}/bin/nm-connection-editor</command></action>
