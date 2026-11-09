@@ -5,8 +5,15 @@ from .config import ConfigError, DEFAULTS, validate_machine
 
 
 def parse_remote_apps(text):
-    """Comma-separated RemoteApp entries; spaces are kept inside each entry."""
-    return [part.strip() for part in text.split(',') if part.strip()]
+    """Comma-separated RemoteApp entries; spaces are kept and quotes are optional."""
+    entries = []
+    for part in text.split(','):
+        entry = part.strip()
+        if len(entry) >= 2 and entry[0] == entry[-1] and entry[0] in ('"', "'"):
+            entry = entry[1:-1].strip()
+        if entry:
+            entries.append(entry)
+    return entries
 
 
 def choose(machine, q, ask):

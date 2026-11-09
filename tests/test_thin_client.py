@@ -68,6 +68,8 @@ class ThinClientTests(unittest.TestCase):
             ["Accounting", path],
         )
         self.assertEqual(parse_remote_apps(" , "), [])
+        self.assertEqual(parse_remote_apps('"' + path + '"'), [path])
+        self.assertEqual(parse_remote_apps("'" + path + "'"), [path])
 
 
 if __name__ == "__main__":
