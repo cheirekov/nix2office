@@ -13,11 +13,13 @@ import tempfile
 
 
 REDIRECT = {
-    "smartcard": ["--smartcard"],
-    "clipboard": ["--clipboard"],
-    "audio": ["--sound", "--microphone:sys:pulse,format:1"],
+    "smartcard": ["/smartcard"],
+    "clipboard": ["/clipboard"],
+    # Sound output only. Microphone redirection needs a running PulseAudio/PipeWire
+    # session and fails fatally (POST_CONNECT_FAILED) in the thin kiosk.
+    "audio": ["/sound"],
     "drives": [],  # filled below with the local home path
-    "usb": ["--usb:auto"],
+    "usb": ["/usb:auto"],
 }
 
 
@@ -66,11 +68,11 @@ def main(argv=None):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write("\n".join(lines) + "\n")
             stream.flush()
-        command = ["xfreerdp", "--from-file", rdp_file, "--cert:tofu"]
+        command = ["xfreerdp", rdp_file, "/cert:tofu"]
         for key in config.get("redirect", []):
             if key == "drives":
                 if home:
-                    command.append(f"--drive:home,{home}")
+                    command.append(f"/drive:home,{home}")
                 continue
             command.extend(REDIRECT.get(key, []))
         if args.app:

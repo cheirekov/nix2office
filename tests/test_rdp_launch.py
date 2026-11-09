@@ -84,8 +84,10 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertNotIn("s3cret", command)
             self.assertNotIn("s3cret", " ".join(command))
             self.assertEqual(command[0], "xfreerdp")
-            for flag in ("--smartcard", "--clipboard", "--sound", "--usb:auto", "--drive:home,/home/maria"):
+            for flag in ("/smartcard", "/clipboard", "/sound", "/usb:auto", "/drive:home,/home/maria", "/cert:tofu"):
                 self.assertIn(flag, command)
+            self.assertNotIn("--from-file", command)
+            self.assertNotIn("/microphone", command)
             self.assertIn("full address:s:192.0.2.10:3390", result["rdp"])
             self.assertIn("username:s:accountant", result["rdp"])
             self.assertIn("password:s:s3cret", result["rdp"])
