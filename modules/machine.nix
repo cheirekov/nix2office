@@ -8,6 +8,7 @@ let
   hardware = m.hardware or { };
   sharing = m.sharing or { };
   performance = m.performance or { };
+  thin_client = m.thin_client or { };
   allowed = {
     root = [
       "version"
@@ -16,6 +17,7 @@ let
       "boot_mode"
       "profile"
       "boot_splash"
+      "role"
       "performance"
       "user"
       "apps"
@@ -28,6 +30,7 @@ let
       "fonts"
       "remote_support"
       "tools"
+      "thin_client"
     ];
     user = [
       "name"
@@ -44,6 +47,11 @@ let
       "direct_ip_access"
     ];
     tools = [ "comma" ];
+    thin_client = [
+      "credentials"
+      "redirect"
+      "profiles"
+    ];
     fonts = [
       "microsoft_core"
       "office_fallbacks"
@@ -102,6 +110,7 @@ let
     fonts = m.fonts or { };
     remote_support = m.remote_support or { };
     tools = m.tools or { };
+    thin_client = m.thin_client or { };
     user = m.user;
     keyboard = m.keyboard or { };
     inherit
@@ -169,6 +178,7 @@ in
     diskDevice = m.disk;
     bootMode = m.boot_mode;
     bootSplash.enable = m.boot_splash or true;
+    role = m.role or "office";
     user = {
       name = m.user.name;
       fullName = m.user.full_name;
@@ -203,6 +213,24 @@ in
     hardware.memoryMiB = hardware.memory_mib or 0;
     hardware.threads = hardware.threads or 0;
     performance.cpuGovernor = performance.cpu_governor or "auto";
+  };
+  nix2office.thinClient = {
+    credentials = thin_client.credentials or "interactive";
+    redirect =
+      thin_client.redirect or [
+        "smartcard"
+        "clipboard"
+        "audio"
+        "drives"
+        "usb"
+      ];
+    profiles = map (p: {
+      name = p.name;
+      host = p.host;
+      user = p.user;
+      port = p.port or 3389;
+      remoteApps = p.remote_apps or [ ];
+    }) (thin_client.profiles or [ ]);
   };
   nix2office.devices = {
     bluetooth = (m.devices or { }).bluetooth or false;

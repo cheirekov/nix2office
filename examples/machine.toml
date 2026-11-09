@@ -4,6 +4,7 @@ hostname = "office-pc"
 disk = "/dev/disk/by-id/ata-REPLACE_WITH_INTERNAL_SSD"
 boot_mode = "bios" # bios or uefi; match the rescue USB's boot mode
 profile = "light" # light or standard; starting suggestions, not hard limits
+role = "office" # office, hybrid (office + RDP) or thin (RDP kiosk only)
 boot_splash = true
 
 [performance]
@@ -79,3 +80,15 @@ relay_server = ""
 public_key = ""
 ip_whitelist = [] # IPv4 CIDRs; empty or 0.0.0.0/0 = access from anywhere
 direct_ip_access = false # allow RustDesk direct IP on TCP 21118 (read initial ID)
+
+# RDP thin client. Set role to "hybrid" or "thin", then uncomment and fill profiles.
+# [thin_client]
+# credentials = "interactive" # interactive (prompt, nothing stored) or sops (encrypted)
+# redirect = ["smartcard", "clipboard", "audio", "drives", "usb"]
+#
+# [[thin_client.profiles]]
+# name = "windows"    # short latin id used for launchers
+# host = "192.0.2.10" # Windows RDP host (IP or name)
+# user = "accountant" # Windows account
+# port = 3389
+# remote_apps = []    # RemoteApp aliases, e.g. ["Accounting"]

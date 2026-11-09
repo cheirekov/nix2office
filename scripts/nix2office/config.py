@@ -21,9 +21,11 @@ DEFAULTS = {
     "disk": "",
     "boot_mode": "bios",
     "profile": "light",
+    "role": "office",
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
+    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "profiles": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -220,6 +222,45 @@ def validate_machine(raw):
         raise ConfigError("performance.cpu_governor: choose auto, schedutil, ondemand, powersave or performance.")
     if governor != "auto" and h["frequency_governors"] and governor not in h["frequency_governors"]:
         raise ConfigError("performance.cpu_governor: not available in this target's hardware snapshot; re-probe before selecting another governor.")
+    if m["role"] not in ("office", "hybrid", "thin"):
+        raise ConfigError("role: choose office, hybrid or thin.")
+    tc = m["thin_client"]
+    if tc["credentials"] not in ("interactive", "sops"):
+        raise ConfigError("thin_client.credentials: choose interactive or sops.")
+    redirect_choices = {"smartcard", "clipboard", "audio", "drives", "usb"}
+    if not isinstance(tc["redirect"], list) or len(tc["redirect"]) != len(set(tc["redirect"])) or any(v not in redirect_choices for v in tc["redirect"]):
+        raise ConfigError("thin_client.redirect: unique names from smartcard, clipboard, audio, drives, usb.")
+    profiles = tc["profiles"]
+    if not isinstance(profiles, list):
+        raise ConfigError("thin_client.profiles: expected a list of profiles.")
+    seen = set()
+    for prof in profiles:
+        if not isinstance(prof, dict):
+            raise ConfigError("thin_client.profiles: each profile must be a table.")
+        unknown = set(prof) - {"name", "host", "user", "port", "remote_apps"}
+        if unknown:
+            raise ConfigError("thin_client.profiles: unknown field(s) " + ", ".join(sorted(unknown)) + ".")
+        name = prof.get("name", "")
+        pattern(name, "thin_client.profiles[].name", r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
+        if name in seen:
+            raise ConfigError("thin_client.profiles: profile names must be unique.")
+        seen.add(name)
+        host = prof.get("host", "")
+        text(host, "thin_client.profiles[].host")
+        if not host:
+            raise ConfigError("thin_client.profiles[].host: required.")
+        rdp_user = prof.get("user", "")
+        text(rdp_user, "thin_client.profiles[].user")
+        if not rdp_user:
+            raise ConfigError("thin_client.profiles[].user: required.")
+        port = prof.get("port", 3389)
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ConfigError("thin_client.profiles[].port: expected an integer 1..65535.")
+        remote_apps = prof.get("remote_apps", [])
+        if not isinstance(remote_apps, list) or any(not isinstance(v, str) or not v.strip() for v in remote_apps):
+            raise ConfigError("thin_client.profiles[].remote_apps: expected a list of non-empty names.")
+    if m["role"] in ("hybrid", "thin") and not profiles:
+        raise ConfigError("thin_client: at least one RDP profile is required when role is hybrid or thin.")
     return m
 
 
@@ -233,12 +274,21 @@ def load_machine(path):
 
 def dump_machine(machine):
     m = validate_machine(machine)
+    nl = chr(10)
     lines = ["# Nix2office configuration. Never put passwords, tokens or private keys here."]
     for key, value in m.items():
-        if not isinstance(value, dict):
+        if not isinstance(value, (dict, list)):
             lines.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
     for section, values in m.items():
-        if isinstance(values, dict):
-            lines.extend(("", f"[{section}]"))
-            lines.extend(f"{key} = {json.dumps(value, ensure_ascii=False)}" for key, value in values.items())
-    return "\n".join(lines) + "\n"
+        if not isinstance(values, dict):
+            continue
+        lines.extend(("", f"[{section}]"))
+        for key, value in values.items():
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                for item in value:
+                    lines.extend(("", f"[[{section}.{key}]]"))
+                    for k, v in item.items():
+                        lines.append(f"{k} = {json.dumps(v, ensure_ascii=False)}")
+            else:
+                lines.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
+    return nl.join(lines) + nl

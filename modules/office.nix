@@ -12,6 +12,7 @@ let
     vaapi = cfg.performance.vaapi;
   };
   bulgarianVariant = if cfg.keyboard.bulgarian == "bds" then "" else "phonetic";
+  officeEnabled = cfg.role != "thin";
   # Firefox content processes: scale with CPU threads but cap by RAM so a weak
   # machine never spawns more processes than it can keep resident. 0 = unknown.
   processCount =
@@ -33,6 +34,7 @@ in
   imports = [
     ./networking.nix
     ./remote-support.nix
+    ./thin-client.nix
   ];
   options.nix2office = (import ../lib/desktop-options.nix { inherit lib; }) // {
     fonts.microsoftCore = lib.mkEnableOption "Microsoft core fonts (unfreeRedistributable)";
@@ -77,6 +79,72 @@ in
       type = lib.types.ints.unsigned;
       default = 0;
       description = "Detected online CPU threads; 0 means unknown. Drives the Firefox content-process count.";
+    };
+    role = lib.mkOption {
+      type = lib.types.enum [
+        "office"
+        "hybrid"
+        "thin"
+      ];
+      default = "office";
+      description = "Machine role: full office, office plus RDP thin client, or thin client only.";
+    };
+    thinClient = {
+      credentials = lib.mkOption {
+        type = lib.types.enum [
+          "interactive"
+          "sops"
+        ];
+        default = "interactive";
+        description = "RDP password source: prompt at connection, or a sops secret.";
+      };
+      redirect = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.enum [
+            "smartcard"
+            "clipboard"
+            "audio"
+            "drives"
+            "usb"
+          ]
+        );
+        default = [
+          "smartcard"
+          "clipboard"
+          "audio"
+          "drives"
+          "usb"
+        ];
+        description = "Device redirection enabled for RDP sessions.";
+      };
+      profiles = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule (
+            { ... }: {
+              options = {
+                name = lib.mkOption { type = lib.types.str; };
+                host = lib.mkOption { type = lib.types.str; };
+                user = lib.mkOption { type = lib.types.str; };
+                port = lib.mkOption {
+                  type = lib.types.port;
+                  default = 3389;
+                };
+                remoteApps = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [ ];
+                };
+              };
+            }
+          )
+        );
+        default = [ ];
+        description = "RDP profiles; each can publish RemoteApp aliases.";
+      };
+      passwordFile = lib.mkOption {
+        type = lib.types.str;
+        default = "/run/secrets/rdp-password";
+        description = "Runtime path to the decrypted RDP password; never a store file.";
+      };
     };
     bootSplash.enable = lib.mkOption {
       type = lib.types.bool;
@@ -167,7 +235,7 @@ in
         variant = ",${bulgarianVariant}";
         options = "grp:alt_shift_toggle";
       };
-      desktopManager.xfce.enable = true;
+      desktopManager.xfce.enable = officeEnabled;
       displayManager.lightdm.enable = true;
       displayManager.lightdm.greeters.gtk.indicators = [
         "~host"
@@ -194,9 +262,9 @@ in
       '';
       excludePackages = [ pkgs.xterm ];
     };
-    services.displayManager.defaultSession = "xfce";
+    services.displayManager.defaultSession = if officeEnabled then "xfce" else "none+openbox";
     services.libinput.enable = true;
-    programs.xfconf.enable = true;
+    programs.xfconf.enable = officeEnabled;
     hardware.graphics.enable = true;
     # VA-API H.264 offload. Intel Gen7 (Bay Trail/Haswell) uses the legacy i965
     # driver; newer Intel prefers intel-media-driver, kept for a follow-up rule.
@@ -303,7 +371,7 @@ in
     services.tumbler.enable = true;
     services.fstrim.enable = true;
     programs.firefox = {
-      enable = cfg.apps.browser == "firefox-esr";
+      enable = officeEnabled && cfg.apps.browser == "firefox-esr";
       package = pkgs.firefox-esr;
       languagePacks = [ "bg" ];
       preferences = {
@@ -343,11 +411,13 @@ in
         noto-fonts
         noto-fonts-color-emoji
       ]
-      ++ lib.optionals cfg.fonts.officeFallbacks [
-        pkgs.carlito
-        pkgs.caladea
-      ]
-      ++ lib.optional cfg.fonts.microsoftCore pkgs.corefonts;
+      ++ lib.optionals officeEnabled (
+        (lib.optionals cfg.fonts.officeFallbacks [
+          pkgs.carlito
+          pkgs.caladea
+        ])
+        ++ lib.optional cfg.fonts.microsoftCore pkgs.corefonts
+      );
     # Allow only the explicitly selected proprietary browser, not every unfree package.
     nixpkgs.config.allowUnfreePredicate =
       pkg:
@@ -366,30 +436,39 @@ in
       );
     environment.systemPackages =
       (with pkgs; [
-        atril
-        simple-scan
         pavucontrol
-        xfce4-whiskermenu-plugin
-        xfce4-xkb-plugin
-        thunar-archive-plugin
-        xarchiver
-        hunspell
-        hunspellDicts.en_US
         htop
         nano
       ])
+      ++ (
+        with pkgs;
+        lib.optionals officeEnabled [
+          atril
+          simple-scan
+          xfce4-whiskermenu-plugin
+          xfce4-xkb-plugin
+          thunar-archive-plugin
+          xarchiver
+          hunspell
+          hunspellDicts.en_US
+        ]
+      )
       ++ [ (import ../packages/diagnose.nix { inherit pkgs; }) ]
-      ++ applications.extraPackages
-      ++ applications.artcraftPackages
-      ++ applications.officePackages
-      ++ applications.pdfPackages
-      ++ lib.optional (cfg.apps.browser != "firefox-esr") applications.browser.package
-      ++ lib.optional cfg.apps.nextcloud pkgs.nextcloud-client;
+      ++ lib.optionals officeEnabled (
+        applications.extraPackages
+        ++ applications.artcraftPackages
+        ++ applications.officePackages
+        ++ applications.pdfPackages
+        ++ lib.optional (cfg.apps.browser != "firefox-esr") applications.browser.package
+        ++ lib.optional cfg.apps.nextcloud pkgs.nextcloud-client
+      );
     home-manager = {
       useGlobalPkgs = true;
       useUserPackages = true;
       users.${cfg.user.name} = {
-        imports = [ ../home/office.nix ];
+        imports = [
+          (if officeEnabled then ../home/office.nix else ../home/thin.nix)
+        ];
         nix2office = {
           inherit (cfg)
             user

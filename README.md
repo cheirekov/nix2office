@@ -64,6 +64,14 @@ applications and fonts and build locally. Remote activation requires `--apply`,
 verified SSH trust, typed hostname confirmation and the admin sudo password.
 See the [Bulgarian maintenance guide](docs/maintenance-bg.md).
 
+## RDP thin client roles
+
+Set role = "hybrid" to keep the office desktop and add a FreeRDP 3 client, or
+role = "thin" for a minimal auto-login kiosk that starts an RDP session without
+installing XFCE, a browser or office apps. Profiles, RemoteApp aliases,
+redirection and the sops password flow are documented in the
+[Bulgarian thin-client guide](docs/rdp-thin-client-bg.md).
+
 ## Start with the assistant
 
 ```sh

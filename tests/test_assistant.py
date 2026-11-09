@@ -232,6 +232,43 @@ class DeploymentTests(unittest.TestCase):
                     contents = p.read_bytes()
                     self.assertFalse(any(value.encode() in contents for value in entered.values()))
 
+    def test_rdp_sops_secret_generated_for_hybrid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "private"
+            m = machine()
+            m["role"] = "hybrid"
+            m["thin_client"] = {
+                "credentials": "sops",
+                "redirect": ["smartcard", "clipboard"],
+                "profiles": [{"name": "win", "host": "192.0.2.10", "user": "accountant", "remote_apps": ["Accounting"]}],
+            }
+            secret = "Example-only-DO-NOT-USE"
+            with patch("nix2office.deployment.prompt_password", return_value=secret):
+                prepare(m, dest, SOURCE, True)
+            tracked = subprocess.check_output(["git", "-C", str(dest), "ls-files"], text=True).splitlines()
+            self.assertIn("rdp.yaml", tracked)
+            env = dict(os.environ, SOPS_AGE_KEY_FILE=str(dest / "keys/operator.age"))
+            decoded = json.loads(subprocess.check_output(["sops", "-d", "--output-type", "json", str(dest / "rdp.yaml")], env=env, text=True))
+            self.assertEqual(decoded, {"password": secret})
+            for p in tracked:
+                self.assertNotIn(secret.encode(), (dest / p).read_bytes())
+
+    def test_rdp_interactive_creates_no_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "private"
+            m = machine()
+            m["role"] = "hybrid"
+            m["thin_client"] = {
+                "credentials": "interactive",
+                "redirect": ["smartcard"],
+                "profiles": [{"name": "win", "host": "192.0.2.10", "user": "accountant"}],
+            }
+            with patch("nix2office.deployment.prompt_password", side_effect=AssertionError("no RDP prompt expected")):
+                prepare(m, dest, SOURCE, True)
+            tracked = subprocess.check_output(["git", "-C", str(dest), "ls-files"], text=True).splitlines()
+            self.assertNotIn("rdp.yaml", tracked)
+            self.assertFalse((dest / "rdp.yaml").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

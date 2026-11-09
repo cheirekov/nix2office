@@ -131,6 +131,15 @@ def _flake(source):
             };
             nix2office.remoteSupport.passwordFile = config.sops.secrets.rustdesk-password.path;
           })
+          ({ config, lib, ... }: lib.mkIf ((machine.role or "office") != "office" && (machine.thin_client.credentials or "interactive") == "sops") {
+            sops.secrets.rdp-password = {
+              sopsFile = ./rdp.yaml;
+              key = "password";
+              owner = machine.user.name;
+              mode = "0400";
+            };
+            nix2office.thinClient.passwordFile = config.sops.secrets.rdp-password.path;
+          })
         ];
       };
     };
@@ -170,6 +179,16 @@ def prepare_rustdesk_secret(machine, dest):
     run('git', '-C', str(dest), 'add', 'rustdesk.yaml')
 
 
+def prepare_rdp_secret(machine, dest):
+    if machine['role'] == 'office' or machine['thin_client']['credentials'] != 'sops' or (dest/'rdp.yaml').exists():
+        return
+    password = prompt_password('RDP — Windows парола (sops)', minimum=1)
+    recipients = [run('age-keygen', '-y', str(dest/'keys'/f'{name}.age')).stdout.strip() for name in ('host', 'operator')]
+    encrypted = run('sops', '--encrypt', '--age', ','.join(recipients), '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin', input=json.dumps({'password': password})).stdout
+    _write(dest/'rdp.yaml', encrypted)
+    run('git', '-C', str(dest), 'add', 'rdp.yaml')
+
+
 def prepare(machine, dest, source, generate_passwords=False, update=False):
     m = validate_machine(machine)
     dest = check_destination(dest, update)
@@ -181,6 +200,7 @@ def prepare(machine, dest, source, generate_passwords=False, update=False):
         if marker.get("user") != m["user"]["name"]:
             raise PreparationError("Changing the login name needs a separate migration or a new deployment; keys/passwords were not changed.")
         prepare_rustdesk_secret(m, dest)
+        prepare_rdp_secret(m, dest)
         _write(dest / "machine.toml", dump_machine(m))
         _write(dest / "flake.nix", _flake(source))
         return dest
@@ -229,6 +249,7 @@ enrol VPNs or configure Nextcloud accounts.
 ''')
         run("git", "-C", str(dest), "init", "-b", "main")
         prepare_rustdesk_secret(m, dest)
+        prepare_rdp_secret(m, dest)
         run("git", "-C", str(dest), "add", ".gitignore", ".sops.yaml", ".nix2office.json", "README.md", "machine.toml", "host.nix", "flake.nix", "secrets.yaml")
     except BaseException:
         # Only this newly created, mode-0700 directory is ever removed on failure.
@@ -239,22 +260,32 @@ enrol VPNs or configure Nextcloud accounts.
 
 def summary(m):
     u = m["user"]
+    roles = {"office": "офис", "hybrid": "офис + RDP thin client", "thin": "само RDP thin client"}
+    role = roles.get(m["role"], m["role"])
     office = [] if m["apps"]["office"] == "none" else [m["apps"]["office"]]
     if m["apps"]["artcraft"]:
         office.append("ArtCraft (WordCraft, DeckCraft, GridCraft, PdfCraft)")
-    print(f'Машина: {m["hostname"]} | {m["boot_mode"].upper()} | профил {m["profile"]}')
+    print(f'Машина: {m["hostname"]} | {m["boot_mode"].upper()} | профил {m["profile"]} | роля: {role}')
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
-    print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
+    if m["role"] == "thin":
+        print("Приложения: без локален браузър/офис (thin client)")
+    else:
+        print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
+    if m["role"] != "office":
+        tc = m["thin_client"]
+        profiles = ", ".join(f'{p["name"]} ({p["host"]}:{p["port"]})' for p in tc["profiles"])
+        print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
     rs = m["remote_support"]
     rustdesk = rs["mode"]
     if rs["mode"] != "off":
         rustdesk += " | IP: " + (", ".join(rs["ip_whitelist"]) or "всички (празен списък)")
         rustdesk += " | директен IP: " + ("да" if rs["direct_ip_access"] else "не")
     print("RustDesk: " + rustdesk)
-    print("Comma с готов малък индекс: " + ("включен" if m["tools"]["comma"] else "изключен"))
-    print("Допълнителни програми: " + (", ".join(m["apps"]["extra"]) or "няма"))
-    print(f'Шрифтове: Microsoft Core={m["fonts"]["microsoft_core"]}; Carlito/Caladea={m["fonts"]["office_fallbacks"]}')
+    if m["role"] != "thin":
+        print("Comma с готов малък индекс: " + ("включен" if m["tools"]["comma"] else "изключен"))
+        print("Допълнителни програми: " + (", ".join(m["apps"]["extra"]) or "няма"))
+        print(f'Шрифтове: Microsoft Core={m["fonts"]["microsoft_core"]}; Carlito/Caladea={m["fonts"]["office_fallbacks"]}')
     print(f'Клавиатура: US + BG {m["keyboard"]["bulgarian"]}; Workgroup: {m["sharing"]["workgroup"]} ({m["sharing"]["mode"]})')
     print('VPN: ' + (', '.join(k for k in ("wireguard", "tailscale", "zerotier") if m["vpn"][k]) or '(няма)'))
     print(f'Bluetooth: {m["devices"]["bluetooth"]}; unfree firmware: {m["devices"]["unfree_firmware"]}')

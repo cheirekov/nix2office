@@ -1,0 +1,115 @@
+"""Focused checks for the FreeRDP launcher: no password in argv, correct flags."""
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "rdp-launch.py"
+_spec = importlib.util.spec_from_file_location("rdp_launch", _SCRIPT)
+rdp_launch = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(rdp_launch)
+
+
+def write_config(tmp, profiles, redirect=None, home="/home/maria"):
+    config = {
+        "credentials": "interactive",
+        "redirect": redirect or ["smartcard", "clipboard", "audio", "drives", "usb"],
+        "home": home,
+        "profiles": profiles,
+    }
+    path = Path(tmp) / "rdp-config.json"
+    path.write_text(json.dumps(config))
+    return path
+
+
+def launch(config_path, profile, app=None, password_file=None):
+    captured = {"command": None, "rdp": ""}
+    writes = []
+    created = []
+    real_mkstemp = tempfile.mkstemp
+
+    class Capture:
+        def write(self, text):
+            writes.append(text)
+
+        def flush(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def fake_mkstemp(suffix=".rdp"):
+        fd, path = real_mkstemp(suffix=suffix)
+        created.append(path)
+        return fd, path
+
+    def fake_fdopen(fd, *args, **kwargs):
+        os.close(fd)
+        return Capture()
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0)
+
+    argv = ["--config", str(config_path), "--profile", profile]
+    if app:
+        argv += ["--app", app]
+    if password_file:
+        argv += ["--password-file", str(password_file)]
+    with patch.object(rdp_launch.subprocess, "run", side_effect=fake_run), patch.object(
+        rdp_launch.tempfile, "mkstemp", side_effect=fake_mkstemp
+    ), patch.object(rdp_launch.os, "fdopen", side_effect=fake_fdopen):
+        rdp_launch.main(argv)
+    captured["rdp"] = "".join(writes)
+    captured["files_gone"] = all(not os.path.exists(p) for p in created)
+    return captured
+
+
+class RdpLaunchTests(unittest.TestCase):
+    def test_full_session_flags_and_no_password_in_argv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "accountant", "port": 3390}])
+            secret = Path(tmp) / "pass"
+            secret.write_text("s3cret")
+            result = launch(config, "win", password_file=secret)
+            command = result["command"]
+            self.assertNotIn("s3cret", command)
+            self.assertNotIn("s3cret", " ".join(command))
+            self.assertEqual(command[0], "xfreerdp")
+            for flag in ("--smartcard", "--clipboard", "--sound", "--usb:auto", "--drive:home,/home/maria"):
+                self.assertIn(flag, command)
+            self.assertIn("full address:s:192.0.2.10:3390", result["rdp"])
+            self.assertIn("username:s:accountant", result["rdp"])
+            self.assertIn("password:s:s3cret", result["rdp"])
+            self.assertTrue(result["files_gone"])
+
+    def test_remote_app_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u", "remote_apps": ["Accounting"]}])
+            result = launch(config, "win", app="Accounting")
+            self.assertIn("/app:||Accounting", result["command"])
+
+    def test_unknown_profile_exits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            with self.assertRaises(SystemExit), patch("sys.stderr", new=io.StringIO()):
+                launch(config, "missing")
+
+    def test_prompt_when_no_password_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            result = launch(config, "win")
+            self.assertIn("prompt for credentials:i:1", result["rdp"])
+            self.assertNotIn("password:s:", result["rdp"])
+
+
+if __name__ == "__main__":
+    unittest.main()
