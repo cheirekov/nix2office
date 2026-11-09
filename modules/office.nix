@@ -140,6 +140,11 @@ in
         default = [ ];
         description = "RDP profiles; each can publish RemoteApp aliases.";
       };
+      fullscreen = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Start RDP sessions in fullscreen mode.";
+      };
       passwordFile = lib.mkOption {
         type = lib.types.str;
         default = "/run/secrets/rdp-password";

@@ -17,6 +17,7 @@ Nix2office поддържа три роли за една машина, зада
     [thin_client]
     credentials = "interactive"   # или "sops"
     redirect = ["smartcard", "clipboard", "audio", "drives", "usb"]
+    fullscreen = true             # стартира RDP в пълен екран
 
     [[thin_client.profiles]]
     name = "windows"
@@ -30,6 +31,7 @@ Nix2office поддържа три роли за една машина, зада
 - role — office, hybrid или thin.
 - thin_client.credentials — interactive (пита за парола при всяко свързване, нищо не се записва) или sops (криптирана парола, виж по-долу).
 - thin_client.redirect — подмножество от smartcard, clipboard, audio, drives, usb.
+- thin_client.fullscreen — true/false (по подразбиране false). Стартира RDP сесията в пълен екран; излизане/връщане с Ctrl+Alt+Enter.
 - thin_client.profiles — един или повече RDP профила. Всеки има name, host, user, port (по подразбиране 3389) и remote_apps (списък от RemoteApp alias-и).
 - Ролята hybrid или thin изисква поне един профил.
 
@@ -46,6 +48,16 @@ Nix2office поддържа три роли за една машина, зада
 RemoteApp изисква Windows страната да публикува програмата като RemoteApp (например чрез RDP Wrapper/RemoteApp настройка). В remote_apps може да се запише или пълният път до програмата, например C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe, или краткото име на публикувания alias. Launcher-ът го стартира съответно с /app:program:<път> или /app:program:||<alias>.
 
 Всеки профил получава .desktop launcher за пълна сесия, а всеки RemoteApp alias — отделен launcher. В thin режим първият профил се стартира автоматично след влизане.
+
+В менюто и на работния плот RemoteApp записите се показват с кратко име: за пълен път се взима името на програмата без разширението (например ExpectaClient), а кратък alias се показва както е.
+
+## Клавиатура в RemoteApp (App mode)
+
+В пълна RDP сесия превключването на езика (Alt+Shift) се управлява от Windows и работи. В RemoteApp режим (отделна програма) Windows не синхронизира автоматично клиентската клавиатурна подредба и може да остане на езика по подразбиране на сървъра. Това е ограничение на RemoteApp, а не на FreeRDP клиента: решението е от страна на Windows — инсталирана българска подредба на хост-а и включен keyboard sync, евентуално с изричен layout за сесията.
+
+## Видео
+
+FreeRDP 3 преговаря GFX/H.264 с Windows и декодира през FFmpeg, който е вграден в пакета. Инсталаторът добавя и подходящия VA-API драйвер за открития хардуер (например intel-vaapi-driver за Intel Bay Trail) също и в thin роля. Дали декодирането е на CPU или GPU зависи от VA-API пътя на FreeRDP и може да се провери с измерване при нужда.
 
 ## Роля thin
 

@@ -60,5 +60,6 @@ def choose(machine, q, ask):
         q.Choice('Локални дискове', value='drives', checked='drives' in tc['redirect']),
         q.Choice('USB', value='usb', checked='usb' in tc['redirect']),
     ]))
+    tc['fullscreen'] = ask(q.confirm('Пълен екран за RDP сесията?', default=(machine['role'] == 'thin')))
     return machine
 

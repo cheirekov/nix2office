@@ -60,6 +60,15 @@ class ThinClientTests(unittest.TestCase):
         m = validate_machine(machine("office", {"profiles": [{"name": "win", "host": "h", "user": "u"}]}))
         self.assertEqual(m["role"], "office")
 
+    def test_fullscreen_is_boolean(self):
+        m = validate_machine(machine("thin", {"profiles": [{"name": "x", "host": "h", "user": "u"}]}))
+        self.assertFalse(m["thin_client"]["fullscreen"])
+        with self.assertRaises(ConfigError):
+            validate_machine(machine("thin", {
+                "profiles": [{"name": "x", "host": "h", "user": "u"}],
+                "fullscreen": "yes",
+            }))
+
     def test_remote_apps_keep_spaces_in_paths(self):
         path = r"C:\Program Files (x86)\Info Partner\Expecta\Client\ExpectaClient.exe"
         self.assertEqual(parse_remote_apps(path), [path])

@@ -11,10 +11,18 @@ let
   thinOnly = cfg.role == "thin";
   smartcard = builtins.elem "smartcard" thin.redirect;
   xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
+  appLabel =
+    app:
+    let
+      base = lib.last (lib.splitString "\\" app);
+      trimmed = lib.removeSuffix ".exe" base;
+    in
+    if trimmed == "" then app else trimmed;
   configJson = pkgs.writeText "rdp-config.json" (
     builtins.toJSON {
       credentials = thin.credentials;
       redirect = thin.redirect;
+      fullscreen = thin.fullscreen;
       home = "/home/${cfg.user.name}";
       profiles = map (p: {
         name = p.name;
@@ -51,7 +59,7 @@ let
         lib.imap1 (
           j: app:
           lib.nameValuePair "rdp-app-${p.name}-${toString j}" (
-            entry app app ''${launcher} --profile "${p.name}" --app "${app}"''
+            entry (appLabel app) app ''${launcher} --profile "${p.name}" --app "${app}"''
           )
         ) p.remoteApps
       ) thin.profiles;
@@ -68,7 +76,7 @@ let
     p:
     lib.concatMapStringsSep "\n" (
       app:
-      menuEntry "${app} (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --app ${lib.escapeShellArg app}"
+      menuEntry "${appLabel app} (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --app ${lib.escapeShellArg app}"
     ) p.remoteApps
   ) thin.profiles;
   menuXml = ''

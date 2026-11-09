@@ -15,11 +15,12 @@ rdp_launch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rdp_launch)
 
 
-def write_config(tmp, profiles, redirect=None, home="/home/maria"):
+def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False):
     config = {
         "credentials": "interactive",
         "redirect": redirect or ["smartcard", "clipboard", "audio", "drives", "usb"],
         "home": home,
+        "fullscreen": fullscreen,
         "profiles": profiles,
     }
     path = Path(tmp) / "rdp-config.json"
@@ -92,6 +93,14 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertIn("username:s:accountant", result["rdp"])
             self.assertIn("password:s:s3cret", result["rdp"])
             self.assertTrue(result["files_gone"])
+
+    def test_fullscreen_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True)
+            self.assertIn("/f", launch(config, "win")["command"])
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            self.assertNotIn("/f", launch(config, "win")["command"])
 
     def test_remote_app_alias_and_path(self):
         with tempfile.TemporaryDirectory() as tmp:

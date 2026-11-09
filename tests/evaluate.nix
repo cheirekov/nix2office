@@ -56,7 +56,10 @@ let
           name = "win";
           host = "192.0.2.10";
           user = "accountant";
-          remoteApps = [ "Accounting" ];
+          remoteApps = [
+            "Accounting"
+            "C:\\Program Files\\ExpectaClient.exe"
+          ];
         }
       ];
     };
@@ -223,6 +226,8 @@ let
     assert c.boot.loader.systemd-boot.enable == (variant.boot == "uefi");
     assert !hybrid || builtins.hasAttr "rdp-full-1" home.xdg.desktopEntries;
     assert !hybrid || builtins.hasAttr "rdp-app-win-1" home.xdg.desktopEntries;
+    assert !hybrid || home.xdg.desktopEntries."rdp-app-win-1".name == "Accounting";
+    assert !hybrid || home.xdg.desktopEntries."rdp-app-win-2".name == "ExpectaClient";
     assert !thin || builtins.hasAttr "rdp-full-1" home.xdg.desktopEntries;
     {
       drv = c.system.build.toplevel.drvPath;

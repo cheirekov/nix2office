@@ -216,6 +216,7 @@ in
   };
   nix2office.thinClient = {
     credentials = thin_client.credentials or "interactive";
+    fullscreen = thin_client.fullscreen or false;
     redirect =
       thin_client.redirect or [
         "smartcard"

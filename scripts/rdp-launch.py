@@ -96,6 +96,8 @@ def _run_once(config, profile, password_file, app):
             command.extend(REDIRECT.get(key, []))
         if app:
             command.append(remote_app_flag(app))
+        if config.get("fullscreen"):
+            command.append("/f")
         result = subprocess.run(command, check=False)
         return result.returncode
     finally:
