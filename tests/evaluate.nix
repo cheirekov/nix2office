@@ -15,6 +15,7 @@ let
       boot = "bios";
       bg = "phonetic";
       services = true;
+      gpuDriver = "i915";
     };
     chromium = {
       role = "office";
@@ -33,6 +34,7 @@ let
       boot = "bios";
       bg = "bds";
       services = false;
+      gpuDriver = "amdgpu";
     };
     chrome = {
       role = "office";
@@ -42,6 +44,7 @@ let
       boot = "uefi";
       bg = "phonetic";
       services = false;
+      gpuDriver = "nouveau";
     };
     hybrid = {
       role = "hybrid";
@@ -104,6 +107,7 @@ let
                 };
                 adminNetwork = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
                 adminAuthorizedKeys = lib.mkForce [ "ssh-ed25519 AAAA evaluation-only" ];
+                hardware.gpuDriver = lib.mkForce (variant.gpuDriver or "unknown");
                 fonts.microsoftCore = lib.mkForce variant.services;
                 remoteSupport = {
                   mode = lib.mkForce (
@@ -168,6 +172,18 @@ let
     assert c.hardware.bluetooth.enable == variant.services;
     assert c.services.blueman.enable == variant.services;
     assert c.hardware.enableAllFirmware == variant.services;
+    assert
+      (builtins.elem "intel-vaapi-driver" (map lib.getName c.hardware.graphics.extraPackages))
+      == ((variant.gpuDriver or "unknown") == "i915");
+    assert
+      (builtins.elem "mesa" (map lib.getName c.hardware.graphics.extraPackages))
+      == (builtins.elem (variant.gpuDriver or "unknown") [
+        "amdgpu"
+        "radeon"
+      ]);
+    assert
+      (builtins.elem "libva-vdpau-driver" (map lib.getName c.hardware.graphics.extraPackages))
+      == ((variant.gpuDriver or "unknown") == "nouveau");
     assert !office || builtins.elem "carlito" (map lib.getName c.fonts.packages);
     assert !office || builtins.elem "caladea" (map lib.getName c.fonts.packages);
     assert

@@ -211,6 +211,11 @@ in
     adminNetwork = admin.network or "0.0.0.0/0";
     adminAuthorizedKeys = lib.optional ((admin.ssh_public_key or "") != "") admin.ssh_public_key;
     hardware.cpuVendor = hardware.cpu_vendor or "unknown";
+    hardware.gpuDriver =
+      let
+        gpu = hardware.initrd_modules or [ ];
+      in
+      if gpu == [ ] then "unknown" else lib.head gpu;
     hardware.memoryMiB = hardware.memory_mib or 0;
     hardware.threads = hardware.threads or 0;
     performance.cpuGovernor = performance.cpu_governor or "auto";

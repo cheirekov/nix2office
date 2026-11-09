@@ -118,7 +118,7 @@ in
       }
     ];
     environment.systemPackages = [
-      pkgs.freerdp
+      (import ../packages/freerdp-vaapi.nix { inherit pkgs; })
     ]
     ++ lib.optionals thinOnly [
       pkgs.xterm

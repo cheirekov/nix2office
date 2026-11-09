@@ -70,6 +70,18 @@ in
       default = "intel";
       description = "CPU vendor for microcode; the assistant detects it on the target.";
     };
+    hardware.gpuDriver = lib.mkOption {
+      type = lib.types.enum [
+        "i915"
+        "xe"
+        "amdgpu"
+        "radeon"
+        "nouveau"
+        "unknown"
+      ];
+      default = "unknown";
+      description = "Detected early graphics driver; selects the VA-API decode driver.";
+    };
     hardware.memoryMiB = lib.mkOption {
       type = lib.types.ints.unsigned;
       default = 0;
@@ -271,10 +283,17 @@ in
     services.libinput.enable = true;
     programs.xfconf.enable = officeEnabled;
     hardware.graphics.enable = true;
-    # VA-API H.264 offload. Intel Gen7 (Bay Trail/Haswell) uses the legacy i965
-    # driver; newer Intel prefers intel-media-driver, kept for a follow-up rule.
     hardware.graphics.extraPackages = lib.optionals cfg.performance.vaapi (
-      lib.optional (cfg.hardware.cpuVendor == "intel") pkgs.intel-vaapi-driver
+      if cfg.hardware.gpuDriver == "i915" then
+        [ pkgs.intel-vaapi-driver ]
+      else if cfg.hardware.gpuDriver == "xe" then
+        [ pkgs.intel-media-driver ]
+      else if cfg.hardware.gpuDriver == "amdgpu" || cfg.hardware.gpuDriver == "radeon" then
+        [ pkgs.mesa ]
+      else if cfg.hardware.gpuDriver == "nouveau" then
+        [ pkgs.libva-vdpau-driver ]
+      else
+        [ ]
     );
     hardware.cpu.intel.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "intel");
     hardware.cpu.amd.updateMicrocode = lib.mkDefault (cfg.hardware.cpuVendor == "amd");
