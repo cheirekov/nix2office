@@ -30,7 +30,7 @@ Nix2office поддържа три роли за една машина, зада
 
 - role — office, hybrid или thin.
 - thin_client.credentials — interactive (пита за парола при всяко свързване, нищо не се записва) или sops (криптирана парола, виж по-долу).
-- thin_client.redirect — подмножество от smartcard, clipboard, audio, drives, usb.
+- thin_client.redirect — подмножество от smartcard, clipboard, audio, drives, usb. При drives се споделя само локалната папка ~/Shared като мрежов диск „Shared“ (създава се автоматично, ако липсва), а не цялата домашна папка.
 - thin_client.fullscreen — true/false (по подразбиране false). Стартира RDP сесията в пълен екран; излизане/връщане с Ctrl+Alt+Enter.
 - thin_client.unicode_keyboard — true/false (по подразбиране false). При RemoteApp изпраща въвеждането като Unicode, за да достигне кирилица до програмата; може да наруши някои Ctrl+буква комбинации.
 - thin_client.gfx — auto, rfx или software (по подразбиране auto). Начин на изобразяване на RDP: auto (договаря се, обикновено H.264), rfx (RemoteFX кодек вместо H.264) или software (RemoteFX + софтуерен GDI). Полезно за диагностика на „черни“ области при стари програми.
@@ -100,6 +100,17 @@ Kiosk процесът първо изчаква decrypted sops паролата
 Kiosk-ът повтаря опита само при мрежова/свързваща грешка (например мрежата още не е готова при зареждане). Когато потребителят излезе от Windows или прекъсне сесията, нова сесия НЕ се стартира автоматично — остава менюто.
 
 За тези действия в thin режим се включва polkit с правила само за локалния потребител: управление на NetworkManager връзки и power-off/reboot. Потребителят остава без sudo.
+
+## Живот на RDP сесията (натрупване на сесии)
+
+Когато потребителят излезе от RemoteApp програмата или затвори клиента, FreeRDP прекъсва връзката, но Windows по подразбиране оставя сесията в състояние „disconnected“. С RDP Wrapper и MaxDisconnectionTime = 0 / MaxIdleTime = 0 тези сесии се натрупват и могат да блокират нови влизания; това се видя на тестовия хост като залежали rdp-tcp сесии.
+
+Поправката е настройка от страна на Windows хост-а, защото FreeRDP клиентът не може да принуди сървъра да изтрие сесия, която той оставя отворена: Local Group Policy → Computer Configuration → Administrative Templates → Windows Components → Remote Desktop Services → Remote Desktop Session Host → Session Time Limits — задайте край на прекъснатите и неактивните сесии (например няколко минути) и включете изтриване след изтичане, или разрешете logoff при прекъсната връзка.
+
+## Състояние на RemoteApp (очаквани проблеми)
+
+- Някои стари Windows програми (Delphi/GDI, например ExpectaClient) в RemoteApp показват черни подменюта и после увисват. Първо се пробва thin_client.gfx = "rfx", ако не помогне — "software" (виж „Диагностика на изобразяването“ по-горе).
+- Alternate shell в момента отваря пълна RDP сесия, но не стартира надеждно избраната програма; това е известно ограничение и се уточнява.
 
 ## Windows ограничения
 

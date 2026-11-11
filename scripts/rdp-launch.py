@@ -24,7 +24,7 @@ REDIRECT = {
     # Sound output only. Microphone redirection needs a running PulseAudio/PipeWire
     # session and fails fatally (POST_CONNECT_FAILED) in the thin kiosk.
     "audio": ["/sound"],
-    "drives": [],  # filled below with the local home path
+    "drives": [],  # filled below with the local shared folder
     "usb": ["/usb:auto"],
 }
 
@@ -88,7 +88,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
     host = profile.get("host", "")
     user = profile.get("user", "")
     port = profile.get("port", 3389)
-    home = config.get("home", "")
+    shared = config.get("shared", "")
 
     lines = [
         f"full address:s:{host}:{port}",
@@ -110,8 +110,9 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         command = ["xfreerdp", rdp_file, "/cert:tofu"]
         for key in config.get("redirect", []):
             if key == "drives":
-                if home:
-                    command.append(f"/drive:home,{home}")
+                if shared:
+                    os.makedirs(shared, exist_ok=True)
+                    command.append(f"/drive:Shared,{shared}")
                 continue
             command.extend(REDIRECT.get(key, []))
         if shell:

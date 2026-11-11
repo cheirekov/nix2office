@@ -15,11 +15,11 @@ rdp_launch = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rdp_launch)
 
 
-def write_config(tmp, profiles, redirect=None, home="/home/maria", fullscreen=False, unicode_keyboard=False, gfx="auto"):
+def write_config(tmp, profiles, redirect=None, shared="/home/maria/Shared", fullscreen=False, unicode_keyboard=False, gfx="auto"):
     config = {
         "credentials": "interactive",
         "redirect": redirect or ["smartcard", "clipboard", "audio", "drives", "usb"],
-        "home": home,
+        "shared": shared,
         "fullscreen": fullscreen,
         "unicode_keyboard": unicode_keyboard,
         "gfx": gfx,
@@ -34,6 +34,7 @@ def launch(config_path, profile, app=None, password_file=None, shell=None):
     captured = {"command": None, "rdp": ""}
     writes = []
     created = []
+    makedirs = []
     real_mkstemp = tempfile.mkstemp
 
     class Capture:
@@ -58,6 +59,9 @@ def launch(config_path, profile, app=None, password_file=None, shell=None):
         os.close(fd)
         return Capture()
 
+    def fake_makedirs(path, exist_ok=False):
+        makedirs.append(path)
+
     def fake_run(command, **kwargs):
         captured["command"] = command
         return SimpleNamespace(returncode=0)
@@ -71,9 +75,12 @@ def launch(config_path, profile, app=None, password_file=None, shell=None):
         argv += ["--password-file", str(password_file)]
     with patch.object(rdp_launch.subprocess, "run", side_effect=fake_run), patch.object(
         rdp_launch.tempfile, "mkstemp", side_effect=fake_mkstemp
-    ), patch.object(rdp_launch.os, "fdopen", side_effect=fake_fdopen):
+    ), patch.object(rdp_launch.os, "fdopen", side_effect=fake_fdopen), patch.object(
+        rdp_launch.os, "makedirs", side_effect=fake_makedirs
+    ):
         rdp_launch.main(argv)
     captured["rdp"] = "".join(writes)
+    captured["makedirs"] = makedirs
     captured["files_gone"] = all(not os.path.exists(p) for p in created)
     return captured
 
@@ -89,8 +96,9 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertNotIn("s3cret", command)
             self.assertNotIn("s3cret", " ".join(command))
             self.assertEqual(command[0], "xfreerdp")
-            for flag in ("/smartcard", "/clipboard", "/sound", "/usb:auto", "/drive:home,/home/maria", "/cert:tofu"):
+            for flag in ("/smartcard", "/clipboard", "/sound", "/usb:auto", "/drive:Shared,/home/maria/Shared", "/cert:tofu"):
                 self.assertIn(flag, command)
+            self.assertIn("/home/maria/Shared", result["makedirs"])
             self.assertNotIn("--from-file", command)
             self.assertNotIn("/microphone", command)
             self.assertIn("full address:s:192.0.2.10:3390", result["rdp"])

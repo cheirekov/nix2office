@@ -31,7 +31,7 @@ let
       fullscreen = thin.fullscreen;
       unicode_keyboard = thin.unicodeKeyboard;
       gfx = thin.gfx;
-      home = "/home/${cfg.user.name}";
+      shared = "/home/${cfg.user.name}/Shared";
       profiles = map (p: {
         name = p.name;
         host = p.host;
