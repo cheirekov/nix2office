@@ -118,12 +118,22 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertNotIn("/f", command)
             self.assertNotIn("/floatbar:", command)
 
-    def test_floatbar_only_for_fullscreen_remoteapp(self):
+    def test_app_mode_uses_sdl_client_and_minimal_flags(self):
         with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True)
-            command = launch(config, "win", app="Expecta")["command"]
-            self.assertIn("/f", command)
-            self.assertIn("/floatbar:sticky:on,default:visible,show:fullscreen", command)
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx")
+            app = launch(config, "win", app="Expecta")["command"]
+            self.assertEqual(app[0], "sdl-freerdp")
+            self.assertIn("/app:program:||Expecta", app)
+            self.assertNotIn("/gfx:RFX", app)
+            self.assertNotIn("/gdi:sw", app)
+            self.assertNotIn("/f", app)
+            self.assertNotIn("/floatbar:", app)
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx")
+            full = launch(config, "win")["command"]
+            self.assertEqual(full[0], "xfreerdp")
+            self.assertIn("/gfx:RFX", full)
+            self.assertIn("/f", full)
 
     def test_unicode_keyboard_app_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -186,18 +196,6 @@ class RdpLaunchTests(unittest.TestCase):
             command = launch(config, "win")["command"]
             self.assertIn("/gfx:RFX", command)
             self.assertIn("/gdi:sw", command)
-
-    def test_app_mode_forces_software_gdi(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="rfx")
-            app = launch(config, "win", app="Expecta")["command"]
-            self.assertIn("/gfx:RFX", app)
-            self.assertIn("/gdi:sw", app)
-        with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="auto")
-            app = launch(config, "win", app="Expecta")["command"]
-            self.assertIn("/gdi:sw", app)
-            self.assertNotIn("/gfx:RFX", app)
 
     def test_app_and_shell_mutually_exclusive(self):
         with tempfile.TemporaryDirectory() as tmp:

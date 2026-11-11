@@ -107,7 +107,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write("\n".join(lines) + "\n")
             stream.flush()
-        command = ["xfreerdp", rdp_file, "/cert:tofu"]
+        command = ["sdl-freerdp" if app else "xfreerdp", rdp_file, "/cert:tofu"]
         for key in config.get("redirect", []):
             if key == "drives":
                 if shared:
@@ -121,18 +121,17 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             command.append(remote_app_flag(app))
             if config.get("unicode_keyboard"):
                 command.append("/kbd:unicode:on")
-        gfx = config.get("gfx", "auto")
-        if gfx in ("rfx", "software"):
-            command.append("/gfx:RFX")
-        if app or gfx == "software":
-            # RemoteApp for legacy GDI programs (Delphi/.NET menus) renders more
-            # faithfully -- and without black menus that stall -- on the software
-            # GDI backend. Keep the full desktop session on the configured path.
-            command.append("/gdi:sw")
-        if config.get("fullscreen"):
-            command.append("/f")
-            if app:
-                command.append("/floatbar:sticky:on,default:visible,show:fullscreen")
+        if not app:
+            # Full desktop (and alternate shell) stays on the X11 client with the
+            # tuned codec/GDI path. RemoteApp uses the SDL3 client, whose RAIL
+            # renderer needs no /gfx, /gdi or /f overrides.
+            gfx = config.get("gfx", "auto")
+            if gfx in ("rfx", "software"):
+                command.append("/gfx:RFX")
+            if gfx == "software":
+                command.append("/gdi:sw")
+            if config.get("fullscreen"):
+                command.append("/f")
         result = subprocess.run(command, check=False)
         return result.returncode
     finally:
