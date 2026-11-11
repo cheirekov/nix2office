@@ -176,6 +176,18 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertIn("/gfx:RFX", command)
             self.assertIn("/gdi:sw", command)
 
+    def test_app_mode_forces_software_gdi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="rfx")
+            app = launch(config, "win", app="Expecta")["command"]
+            self.assertIn("/gfx:RFX", app)
+            self.assertIn("/gdi:sw", app)
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], gfx="auto")
+            app = launch(config, "win", app="Expecta")["command"]
+            self.assertIn("/gdi:sw", app)
+            self.assertNotIn("/gfx:RFX", app)
+
     def test_app_and_shell_mutually_exclusive(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])

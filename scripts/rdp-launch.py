@@ -122,10 +122,12 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             if config.get("unicode_keyboard"):
                 command.append("/kbd:unicode:on")
         gfx = config.get("gfx", "auto")
-        if gfx == "rfx":
+        if gfx in ("rfx", "software"):
             command.append("/gfx:RFX")
-        elif gfx == "software":
-            command.append("/gfx:RFX")
+        if app or gfx == "software":
+            # RemoteApp for legacy GDI programs (Delphi/.NET menus) renders more
+            # faithfully -- and without black menus that stall -- on the software
+            # GDI backend. Keep the full desktop session on the configured path.
             command.append("/gdi:sw")
         if config.get("fullscreen"):
             command.append("/f")
