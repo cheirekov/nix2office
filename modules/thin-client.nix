@@ -110,6 +110,9 @@ let
     ${fullItems}
     ${appItems}
     ${shellItems}
+        <item label="Прекрати RDP сесията и върни менюто">
+          <action name="Execute"><command>${pkgs.procps}/bin/pkill -x xfreerdp</command></action>
+        </item>
         <separator />
         <item label="Настройки на мрежата">
           <action name="Execute"><command>${pkgs.networkmanagerapplet}/bin/nm-connection-editor</command></action>

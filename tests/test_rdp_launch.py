@@ -109,10 +109,14 @@ class RdpLaunchTests(unittest.TestCase):
     def test_fullscreen_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True)
-            self.assertIn("/f", launch(config, "win")["command"])
+            command = launch(config, "win")["command"]
+            self.assertIn("/f", command)
+            self.assertIn("/floatbar:sticky:on,default:visible,show:fullscreen", command)
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
-            self.assertNotIn("/f", launch(config, "win")["command"])
+            command = launch(config, "win")["command"]
+            self.assertNotIn("/f", command)
+            self.assertNotIn("/floatbar:", command)
 
     def test_unicode_keyboard_app_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
