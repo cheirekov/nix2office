@@ -131,7 +131,8 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             command.append("/gdi:sw")
         if config.get("fullscreen"):
             command.append("/f")
-            command.append("/floatbar:sticky:on,default:visible,show:fullscreen")
+            if app:
+                command.append("/floatbar:sticky:on,default:visible,show:fullscreen")
         result = subprocess.run(command, check=False)
         return result.returncode
     finally:

@@ -111,12 +111,19 @@ class RdpLaunchTests(unittest.TestCase):
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True)
             command = launch(config, "win")["command"]
             self.assertIn("/f", command)
-            self.assertIn("/floatbar:sticky:on,default:visible,show:fullscreen", command)
+            self.assertNotIn("/floatbar:", command)
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
             command = launch(config, "win")["command"]
             self.assertNotIn("/f", command)
             self.assertNotIn("/floatbar:", command)
+
+    def test_floatbar_only_for_fullscreen_remoteapp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True)
+            command = launch(config, "win", app="Expecta")["command"]
+            self.assertIn("/f", command)
+            self.assertIn("/floatbar:sticky:on,default:visible,show:fullscreen", command)
 
     def test_unicode_keyboard_app_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
