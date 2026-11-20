@@ -107,7 +107,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             stream.write("\n".join(lines) + "\n")
             stream.flush()
-        command = ["sdl-freerdp" if app else "xfreerdp", rdp_file, "/cert:tofu"]
+        command = ["xfreerdp", rdp_file, "/cert:tofu"]
         for key in config.get("redirect", []):
             if key == "drives":
                 if shared:
@@ -119,15 +119,14 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             command.extend(alternate_shell_flags(shell))
         elif app:
             command.append(remote_app_flag(app))
-            # The SDL3 RAIL client's unicode keyboard path does not deliver
-            # modifier key events, so the Windows-side layout hotkeys
-            # (Alt+Shift, Win+Space) never fire in RemoteApp. Keep RemoteApp on
-            # scancode input and switch layouts on the server, like the full
-            # desktop session.
+            # RemoteApp uses the X11 client with Unicode input: the XIM look-up
+            # follows the local XKB group, so Alt+Shift switches Cyrillic/Latin.
+            # This needs a UTF-8 session locale (LANG=bg_BG.UTF-8), which the
+            # menu/autostart launch environment provides.
+            if config.get("unicode_keyboard"):
+                command.append("/kbd:unicode:on")
         if not app:
-            # Full desktop (and alternate shell) stays on the X11 client with the
-            # tuned codec/GDI path. RemoteApp uses the SDL3 client, whose RAIL
-            # renderer needs no /gfx, /gdi or /f overrides.
+            # Full desktop (and alternate shell): tuned codec/GDI path.
             gfx = config.get("gfx", "auto")
             if gfx in ("rfx", "software"):
                 command.append("/gfx:RFX")

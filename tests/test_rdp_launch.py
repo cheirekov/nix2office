@@ -118,30 +118,29 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertNotIn("/f", command)
             self.assertNotIn("/floatbar:", command)
 
-    def test_app_mode_uses_sdl_client_and_minimal_flags(self):
+    def test_app_mode_uses_xfreerdp_with_unicode_keyboard(self):
+        # RemoteApp stays on the X11 client with the Unicode keyboard path:
+        # the local XKB group switch (Alt+Shift) changes the sent characters.
         with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx")
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx", unicode_keyboard=True)
             app = launch(config, "win", app="Expecta")["command"]
-            self.assertEqual(app[0], "sdl-freerdp")
+            self.assertEqual(app[0], "xfreerdp")
             self.assertIn("/app:program:||Expecta", app)
+            self.assertIn("/kbd:unicode:on", app)
             self.assertNotIn("/gfx:RFX", app)
             self.assertNotIn("/gdi:sw", app)
             self.assertNotIn("/f", app)
-            self.assertNotIn("/floatbar:", app)
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
+            app = launch(config, "win", app="Expecta")["command"]
+            self.assertIn("/kbd:unicode:on", app)
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx")
             full = launch(config, "win")["command"]
             self.assertEqual(full[0], "xfreerdp")
             self.assertIn("/gfx:RFX", full)
             self.assertIn("/f", full)
-
-    def test_app_mode_never_uses_unicode_keyboard(self):
-        # The SDL3 client's unicode keyboard path drops modifier events, so
-        # Windows-side layout hotkeys never fire in RemoteApp. Scancode input
-        # switches through the server-side layouts instead.
-        with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
-            self.assertNotIn("/kbd:unicode:on", launch(config, "win", app="Expecta")["command"])
+            self.assertNotIn("/kbd:unicode:on", full)
 
     def test_remote_app_alias_and_path(self):
         with tempfile.TemporaryDirectory() as tmp:
