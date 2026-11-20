@@ -135,16 +135,13 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertIn("/gfx:RFX", full)
             self.assertIn("/f", full)
 
-    def test_unicode_keyboard_app_mode(self):
+    def test_app_mode_never_uses_unicode_keyboard(self):
+        # The SDL3 client's unicode keyboard path drops modifier events, so
+        # Windows-side layout hotkeys never fire in RemoteApp. Scancode input
+        # switches through the server-side layouts instead.
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
-            self.assertIn("/kbd:unicode:on", launch(config, "win", app="Expecta")["command"])
-        with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
             self.assertNotIn("/kbd:unicode:on", launch(config, "win", app="Expecta")["command"])
-        with tempfile.TemporaryDirectory() as tmp:
-            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
-            self.assertNotIn("/kbd:unicode:on", launch(config, "win")["command"])
 
     def test_remote_app_alias_and_path(self):
         with tempfile.TemporaryDirectory() as tmp:
