@@ -119,10 +119,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             command.extend(alternate_shell_flags(shell))
         elif app:
             command.append(remote_app_flag(app))
-            # RemoteApp uses the X11 client with Unicode input: the XIM look-up
-            # follows the local XKB group, so Alt+Shift switches Cyrillic/Latin.
-            # This needs a UTF-8 session locale (LANG=bg_BG.UTF-8), which the
-            # menu/autostart launch environment provides.
+            # Let the X11 client send characters from the local keyboard layout.
             if config.get("unicode_keyboard"):
                 command.append("/kbd:unicode:on")
         if not app:
@@ -132,8 +129,8 @@ def _run_once(config, profile, password_file, app=None, shell=None):
                 command.append("/gfx:RFX")
             if gfx == "software":
                 command.append("/gdi:sw")
-            if config.get("fullscreen"):
-                command.append("/f")
+        if config.get("fullscreen"):
+            command.append("/f")
         result = subprocess.run(command, check=False)
         return result.returncode
     finally:

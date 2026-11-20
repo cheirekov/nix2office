@@ -119,8 +119,7 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertNotIn("/floatbar:", command)
 
     def test_app_mode_uses_xfreerdp_with_unicode_keyboard(self):
-        # RemoteApp stays on the X11 client with the Unicode keyboard path:
-        # the local XKB group switch (Alt+Shift) changes the sent characters.
+        # Preserve the pre-SDL RemoteApp flags from 32731b2.
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx", unicode_keyboard=True)
             app = launch(config, "win", app="Expecta")["command"]
@@ -129,11 +128,13 @@ class RdpLaunchTests(unittest.TestCase):
             self.assertIn("/kbd:unicode:on", app)
             self.assertNotIn("/gfx:RFX", app)
             self.assertNotIn("/gdi:sw", app)
-            self.assertNotIn("/f", app)
+            self.assertIn("/f", app)
+            self.assertFalse(any(flag.startswith("/floatbar:") for flag in app))
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], unicode_keyboard=True)
             app = launch(config, "win", app="Expecta")["command"]
             self.assertIn("/kbd:unicode:on", app)
+            self.assertNotIn("/f", app)
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}], fullscreen=True, gfx="rfx")
             full = launch(config, "win")["command"]
