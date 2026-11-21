@@ -25,7 +25,7 @@ DEFAULTS = {
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
-    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
+    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -40,6 +40,15 @@ DEFAULTS = {
                  "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": [], "pci_ids": [], "usb_ids": [], "bluetooth_detected": False},
 }
 BROWSERS = ("firefox-esr", "chromium", "brave", "google-chrome")
+KEP_PROVIDERS = {
+    "unspecified": "Ще избера по-късно",
+    "b-trust": "B-Trust (Борика)",
+    "infonotary": "InfoNotary",
+    "stampit": "StampIT (Информационно обслужване)",
+    "evrotrust": "Evrotrust",
+    "edocs": "eDocs Bulgaria",
+    "other": "Друг доставчик",
+}
 OFFICES = ("libreoffice", "onlyoffice", "none")
 PDF_EDITORS = ("none", "pdfarranger", "xournalpp", "both")
 GPU_MODULES = ("i915", "xe", "amdgpu", "radeon", "nouveau")
@@ -236,6 +245,11 @@ def validate_machine(raw):
     redirect_choices = {"smartcard", "clipboard", "audio", "drives", "usb"}
     if not isinstance(tc["redirect"], list) or len(tc["redirect"]) != len(set(tc["redirect"])) or any(v not in redirect_choices for v in tc["redirect"]):
         raise ConfigError("thin_client.redirect: unique names from smartcard, clipboard, audio, drives, usb.")
+    provider = text(tc["kep_provider"], "thin_client.kep_provider")
+    if provider and provider not in KEP_PROVIDERS:
+        raise ConfigError("thin_client.kep_provider: unknown provider.")
+    if m["role"] == "thin" and provider and "smartcard" not in tc["redirect"]:
+        raise ConfigError("thin_client.kep_provider: add smartcard to thin_client.redirect.")
     profiles = tc["profiles"]
     if not isinstance(profiles, list):
         raise ConfigError("thin_client.profiles: expected a list of profiles.")
@@ -290,6 +304,8 @@ def dump_machine(machine):
             continue
         lines.extend(("", f"[{section}]"))
         for key, value in values.items():
+            if section == "thin_client" and key == "kep_provider" and not value:
+                continue
             if isinstance(value, list) and value and isinstance(value[0], dict):
                 for item in value:
                     lines.extend(("", f"[[{section}.{key}]]"))

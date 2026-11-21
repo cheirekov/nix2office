@@ -10,7 +10,7 @@ import string
 import subprocess
 from urllib.parse import parse_qs, urlparse
 
-from .config import ConfigError, dump_machine, load_machine, validate_machine
+from .config import ConfigError, KEP_PROVIDERS, dump_machine, load_machine, validate_machine
 
 
 class PreparationError(RuntimeError):
@@ -265,7 +265,10 @@ def summary(m):
     office = [] if m["apps"]["office"] == "none" else [m["apps"]["office"]]
     if m["apps"]["artcraft"]:
         office.append("ArtCraft (WordCraft, DeckCraft, GridCraft, PdfCraft)")
-    print(f'Машина: {m["hostname"]} | {m["boot_mode"].upper()} | профил {m["profile"]} | роля: {role}')
+    machine = f'Машина: {m["hostname"]} | {m["boot_mode"].upper()}'
+    if m["role"] != "thin":
+        machine += f' | профил {m["profile"]}'
+    print(f'{machine} | роля: {role}')
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
     if m["role"] == "thin":
@@ -274,8 +277,11 @@ def summary(m):
         print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
     if m["role"] != "office":
         tc = m["thin_client"]
-        profiles = ", ".join(f'{p["name"]} ({p["host"]}:{p["port"]})' for p in tc["profiles"])
+        profiles = ", ".join(f'{p["name"]} ({p["host"]}:{p.get("port", 3389)})' for p in tc["profiles"])
         print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
+        if m["role"] == "thin":
+            kep = KEP_PROVIDERS.get(tc["kep_provider"], "доставчикът не е зададен")
+            print(f'КЕП през RDP: {kep}' if "smartcard" in tc["redirect"] else 'КЕП през RDP: изключен')
     rs = m["remote_support"]
     rustdesk = rs["mode"]
     if rs["mode"] != "off":

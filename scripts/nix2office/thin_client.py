@@ -1,7 +1,7 @@
 """Optional RDP thin-client menu; no credentials are collected here."""
 import copy
 
-from .config import ConfigError, DEFAULTS, validate_machine
+from .config import ConfigError, DEFAULTS, KEP_PROVIDERS, validate_machine
 
 
 def parse_remote_apps(text):
@@ -53,13 +53,29 @@ def choose(machine, q, ask):
         q.Choice('Интерактивно (не се записва)', value='interactive'),
         q.Choice('sops-nix криптирана', value='sops'),
     ], default=tc['credentials']))
-    tc['redirect'] = ask(q.checkbox('Пренасочване на устройства:', choices=[
-        q.Choice('Смарткарта (КЕП)', value='smartcard', checked='smartcard' in tc['redirect']),
+    is_kiosk = machine['role'] == 'thin'
+    if is_kiosk:
+        use_kep = ask(q.confirm('Ще се използва ли КЕП през Windows RDP?', default=bool(tc['kep_provider'])))
+        tc['kep_provider'] = ask(q.select('Доставчик на КЕП:', choices=[
+            q.Choice(label, value=provider) for provider, label in KEP_PROVIDERS.items()
+        ], default=tc['kep_provider'] or 'unspecified')) if use_kep else ''
+    redirects = [
         q.Choice('Clipboard', value='clipboard', checked='clipboard' in tc['redirect']),
         q.Choice('Аудио', value='audio', checked='audio' in tc['redirect']),
         q.Choice('Локални дискове', value='drives', checked='drives' in tc['redirect']),
         q.Choice('USB', value='usb', checked='usb' in tc['redirect']),
-    ]))
+    ]
+    if is_kiosk:
+        devices = ask(q.checkbox('Пренасочване на устройства:', choices=redirects))
+        tc['redirect'] = (['smartcard'] if tc['kep_provider'] else []) + devices
+    else:
+        redirects.insert(0, q.Choice('Смарткарта (КЕП)', value='smartcard', checked='smartcard' in tc['redirect']))
+        tc['redirect'] = ask(q.checkbox('Пренасочване на устройства:', choices=redirects))
     tc['fullscreen'] = ask(q.confirm('Пълен екран за RDP сесията?', default=(machine['role'] == 'thin')))
+    if any(profile.get('remote_apps') for profile in tc['profiles']):
+        tc['unicode_keyboard'] = ask(q.confirm(
+            'RemoteApp: Unicode вход от локалната подредба (Alt+Shift за BG/EN)?',
+            default=True,
+        ))
     return machine
 

@@ -83,7 +83,50 @@ FreeRDP 3 преговаря GFX/H.264 с Windows и декодира през F
 - Първият RDP профил се стартира автоматично след влизане.
 - Браузър, офис, PDF, Nextcloud, ArtCraft, допълнителни програми и MS core fonts/офис fallbacks не се инсталират.
 
-При избран smartcard в redirect се включва pcscd (с вградения CCID драйвер), за да работи пренасочването на смарткарти/КЕП.
+### КЕП с USB токен през Windows RDP
+
+За ролята `thin` магьосникът пита дали ще се използва КЕП, с подразбиращ
+се отговор „Не“. При „Да“ избери доставчик или „Ще избера по-късно“.
+Можеш да подготвиш машината без включен токен. Изборът записва
+`thin_client.kep_provider` в `machine.toml` и добавя `smartcard` в
+`thin_client.redirect`. Това включва PC/SC с драйвера CCID на киоска и
+пренасочване със `/smartcard` в FreeRDP. Името на доставчика се показва
+в прегледа на конфигурацията.
+
+За ръчна промяна добави `smartcard` към съществуващия списък `redirect`
+и задай `kep_provider` на `b-trust`, `infonotary`, `stampit`,
+`evrotrust`, `edocs`, `other` или `unspecified`. За изключване премахни
+`smartcard` и остави `kep_provider = ""`. Старите конфигурации без
+`kep_provider` продължават да използват съществуващия си списък `redirect`.
+
+Следните USB идентификатори са в `Info.plist` на пакета CCID 1.7.1 от
+заключения nixpkgs:
+
+| Четец | USB VID:PID | Състояние |
+| --- | --- | --- |
+| ACS ACR39U ICC Reader | `072f:b100` | Потвърдено пренасочване при включване на целия токен във вече отворена RDP сесия и след повторно свързване. |
+| ACS ACR38U-CCID | `072f:90cc` | В пакета. За други ACR38 ревизии свери USB ID. |
+| Circle CCR7115 ICC | `31aa:7001` | В пакета. Свери USB ID за конкретния CCR7115B вариант. |
+| Circle CIR115 ICC | `31aa:1000` | В пакета. Свери USB ID за конкретния CIR115 вариант. |
+| HID Omnikey 1021 | `076b:1021` | В пакета. |
+
+ACS описва ACR39T-A1 като USB CCID. За ACR39T-A1 и ACR38C-SPC-R,
+посочени от InfoNotary, свери точния USB ID на устройството преди
+добавяне на отделен драйвер. Търговското име само по себе си не
+потвърждава коя ревизия е включена в пакета.
+[Списък на CCID](https://ccid.apdu.fr/ccid/iProduct.html),
+[ACS ACR39T-A1](https://www.acs.com.hk/en/products/331/acr39t-a1-smart-card-reader),
+[B-Trust](https://www.b-trust.bg/client-center/system-requirements),
+[InfoNotary](https://repository.infonotary.com/ra/install/Minimum_Requirements_BG.pdf),
+[StampIT](https://www.stampit.org/en/page/795).
+
+На Windows хоста подготви софтуера за конкретната карта и браузъра
+според доставчика. За Evrotrust и eDocs провери дали услугата е на
+физически носител или е дистанционен подпис.
+[Evrotrust](https://evrotrust.com/bg/udostovereniya-i-polezni-vruzki/),
+[Регистър на КРС](https://crc.bg/bg/rubriki/560/elektronni-udostoveritelni-uslugi).
+Приемането изисква реално подписване с валиден сертификат в Windows
+сесията. До този момент е потвърдено пренасочването на ACR39U.
 
 ### Устойчив старт и fallback меню
 
@@ -108,7 +151,8 @@ Kiosk-ът повтаря опита само при мрежова/свързв
 ## Състояние на RemoteApp (очаквани проблеми)
 
 - В ExpectaClient черните подменюта и увисването се възпроизведоха с `xfreerdp` и при опитите с RemoteFX и софтуерен GDI. Причината остава непотвърдена. Пълната RDP сесия е провереният вариант за тази програма.
-- App режимът се оценява и с модерно приложение (Word) — дали да остане включен изобщо.
+- На 21 ноември 2026 г. потребителят потвърди превключване между кирилица и латиница в Word (`WINWORD.EXE`) в RemoteApp след рестарт на киоска. Тестът е с `xfreerdp`, `unicode_keyboard = true` и `fullscreen = true`.
+- При нов профил с RemoteApp помощникът пита дали да включи Unicode вход от локалната клавиатурна подредба. Предварителният избор е включен, за да възпроизведе потвърдения WinAPP вариант.
 - Alternate shell в момента отваря пълна RDP сесия, но не стартира надеждно избраната програма; Windows 11 Pro игнорира client alternate shell заявката — ограничение на client SKU-то.
 
 ## Windows ограничения

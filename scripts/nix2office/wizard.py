@@ -102,14 +102,14 @@ def wizard(args):
 
     m = copy.deepcopy(DEFAULTS)
     print("\nNix2office — подготовка на конфигурация. Стрелки за избор, Enter за потвърждение, Ctrl+C за отказ.")
-    print("Първо избираме чий хардуер проверяваме; административният компютър може да е различен.\n")
+    print("Първо проверяваме целевия хардуер; административният компютър може да е различен.\n")
     inventory = None
     if args.hardware_json:
         inventory = load_inventory(args.hardware_json)
     elif args.target is not None:
         inventory = probe(args.target, args.ssh_config, args.ssh_socket)
     else:
-        method = select("Хардуер на офис машината:", [
+        method = select("Хардуер на целевата машина:", [
             ("ssh", "Отдалечена машина през вече доверен SSH достъп"),
             ("local", "Този компютър (тук ще се инсталира NixOS)"),
             ("json", "Запазен JSON от --probe"),
@@ -123,28 +123,29 @@ def wizard(args):
             inventory = load_inventory(Path(field("Път до hardware.json:")).expanduser())
     if inventory:
         if inventory["architecture"] != "x86_64":
-            raise ConfigError("This profile currently supports x86_64 Linux only (including its LibreOffice language pack).")
+            raise ConfigError("This machine profile currently supports x86_64 Linux only.")
         advice = describe_inventory(inventory)
         m["hardware"] = machine_hardware(inventory)
         m["profile"] = advice["profile"]
         m["performance"]["cpu_governor"] = advice["cpu_governor"]
         m["boot_mode"] = inventory["boot_mode"] if inventory["boot_mode"] in ("bios", "uefi") else "bios"
+    m["role"] = select("Роля на машината:", [
+        ("office", "Офис — пълен локален десктоп"),
+        ("hybrid", "Офис + RDP thin client"),
+        ("thin", "Само thin client — минимална RDP kiosk система"),
+    ], m["role"])
     if inventory and not inventory.get("bluetooth_detected"):
         m["devices"]["bluetooth"] = False
         print("Bluetooth: не е открит адаптер; BlueZ/Blueman остават изключени. Може да се включат по-късно в machine.toml.")
     else:
         m["devices"]["bluetooth"] = ask(q.confirm("Открит Bluetooth: включване на BlueZ + Blueman?" if inventory else "Bluetooth + Blueman (няма хардуерна проверка)?", default=bool(inventory)))
     m["devices"]["unfree_firmware"] = ask(q.confirm("Допълнителен unfree firmware? Redistributable firmware вече е включен.", default=False))
-    m["profile"] = select("Начален профил (пакетите остават избираеми):", [
-        ("light", "Light — Firefox ESR, LibreOffice, PDF Arranger"),
-        ("standard", "Standard — същите + Xournal++ за PDF бележки"),
-    ], m["profile"])
-    m["apps"]["pdf_editor"] = "pdfarranger" if m["profile"] == "light" else "both"
-    m["role"] = select("Роля на машината:", [
-        ("office", "Офис — пълен локален десктоп"),
-        ("hybrid", "Офис + RDP thin client"),
-        ("thin", "Само thin client — минимална RDP kiosk система"),
-    ], m["role"])
+    if m["role"] != "thin":
+        m["profile"] = select("Начален профил (пакетите остават избираеми):", [
+            ("light", "Light — Firefox ESR, LibreOffice, PDF Arranger"),
+            ("standard", "Standard — същите + Xournal++ за PDF бележки"),
+        ], m["profile"])
+        m["apps"]["pdf_editor"] = "pdfarranger" if m["profile"] == "light" else "both"
     governors = [("auto", "Автоматично — запази избора на ядрото")]
     recommended = m["performance"]["cpu_governor"]
     if recommended != "auto":
@@ -208,13 +209,14 @@ def wizard(args):
         choose_thin(m, q, ask)
     m["keyboard"]["bulgarian"] = select("Българска клавиатура (плюс английска):", [("phonetic", "Фонетична"), ("bds", "БДС")], "phonetic")
     m["boot_splash"] = ask(q.confirm("Графичен splash при зареждане?", default=True))
-    m["sharing"]["workgroup"] = field("Windows Workgroup:", "WORKGROUP", "sharing", "workgroup")
-    m["sharing"]["mode"] = select("Windows папки:", [("client", "Достъп до папки на други машини"), ("both", "Достъп + споделяне на собствена папка с парола")], "client")
-    if m["sharing"]["mode"] == "both":
-        m["sharing"]["folder"] = field("Име на споделена папка в Home (латиница):", "Shared", "sharing", "folder")
-        m["sharing"]["network"] = field("IPv4 достъп до SMB: мрежа (172.16.16.0/24), IP/32 или всички IPv4 (0.0.0.0/0):", default="0.0.0.0/0", section="sharing", key="network")
-        m["sharing"]["read_only"] = ask(q.confirm("Споделената папка само за четене?", default=False))
-        print("След инсталация admin задава отделна SMB парола: sudo smbpasswd -a " + m["user"]["name"])
+    if m["role"] != "thin":
+        m["sharing"]["workgroup"] = field("Windows Workgroup:", "WORKGROUP", "sharing", "workgroup")
+        m["sharing"]["mode"] = select("Windows папки:", [("client", "Достъп до папки на други машини"), ("both", "Достъп + споделяне на собствена папка с парола")], "client")
+        if m["sharing"]["mode"] == "both":
+            m["sharing"]["folder"] = field("Име на споделена папка в Home (латиница):", "Shared", "sharing", "folder")
+            m["sharing"]["network"] = field("IPv4 достъп до SMB: мрежа (172.16.16.0/24), IP/32 или всички IPv4 (0.0.0.0/0):", default="0.0.0.0/0", section="sharing", key="network")
+            m["sharing"]["read_only"] = ask(q.confirm("Споделената папка само за четене?", default=False))
+            print("След инсталация admin задава отделна SMB парола: sudo smbpasswd -a " + m["user"]["name"])
     enabled = ask(q.checkbox("VPN инструменти (Space включва/изключва; може без отметки; добавят се и по-късно с rebuild):", choices=[
         q.Choice("WireGuard — NetworkManager import", value="wireguard", checked=True),
         q.Choice("Tailscale — отделна услуга + Trayscale GUI", value="tailscale"),

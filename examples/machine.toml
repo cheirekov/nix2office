@@ -85,6 +85,7 @@ direct_ip_access = false # allow RustDesk direct IP on TCP 21118 (read initial I
 # [thin_client]
 # credentials = "interactive" # interactive (prompt, nothing stored) or sops (encrypted)
 # redirect = ["smartcard", "clipboard", "audio", "drives", "usb"]
+# kep_provider = "unspecified" # thin only; requires "smartcard" in redirect. See docs/rdp-thin-client-bg.md.
 #
 # [[thin_client.profiles]]
 # name = "windows"    # short latin id used for launchers

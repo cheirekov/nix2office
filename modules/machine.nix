@@ -50,6 +50,7 @@ let
     thin_client = [
       "credentials"
       "redirect"
+      "kep_provider"
       "fullscreen"
       "unicode_keyboard"
       "gfx"
@@ -136,6 +137,13 @@ in
       {
         assertion = m.version == 1;
         message = "Unsupported machine.toml version.";
+      }
+      {
+        assertion =
+          (m.role or "office") != "thin"
+          || (thin_client.kep_provider or "") == ""
+          || builtins.elem "smartcard" (thin_client.redirect or [ "smartcard" ]);
+        message = "thin_client.kep_provider requires smartcard in thin_client.redirect.";
       }
       {
         assertion = builtins.elem (m.profile or "light") [
