@@ -1,0 +1,70 @@
+--- a/channels/rdpdr/client/rdpdr_main.c
++++ b/channels/rdpdr/client/rdpdr_main.c
+@@ -727,61 +727,16 @@
+ 
+ #else
+ 
+-static const char* automountLocations[] = { "/run/user/%lu/gvfs", "/run/media/%s", "/media/%s",
+-	                                        "/media", "/mnt" };
+-
++/* Only disks mounted by the Nix2office kiosk service may be announced. */
+ static BOOL isAutomountLocation(const char* path)
+ {
+-	const size_t nrLocations = sizeof(automountLocations) / sizeof(automountLocations[0]);
+-	char buffer[MAX_PATH] = WINPR_C_ARRAY_INIT;
+-	uid_t uid = getuid();
+-	char uname[MAX_PATH] = WINPR_C_ARRAY_INIT;
+-	ULONG size = sizeof(uname) - 1;
+-
+-	if (!GetUserNameExA(NameSamCompatible, uname, &size))
++	static const char prefix[] = "/run/nix2office-usb/volumes/USB-";
++	if (!path || strncmp(path, prefix, sizeof(prefix) - 1) != 0)
+ 		return FALSE;
+ 
+-	if (!path)
+-		return FALSE;
+-
+-	for (size_t x = 0; x < nrLocations; x++)
+-	{
+-		const char* location = automountLocations[x];
+-		size_t length = 0;
+-
+-		WINPR_PRAGMA_DIAG_PUSH
+-		WINPR_PRAGMA_DIAG_IGNORED_FORMAT_NONLITERAL
+-		if (strstr(location, "%lu"))
+-			(void)snprintf(buffer, sizeof(buffer), location, (unsigned long)uid);
+-		else if (strstr(location, "%s"))
+-			(void)snprintf(buffer, sizeof(buffer), location, uname);
+-		else
+-			(void)snprintf(buffer, sizeof(buffer), "%s", location);
+-		WINPR_PRAGMA_DIAG_POP
+-
+-		length = strnlen(buffer, sizeof(buffer));
+-
+-		if (strncmp(buffer, path, length) == 0)
+-		{
+-			const char* rest = &path[length];
+-
+-			/* Only consider mount locations with max depth of 1 below the
+-			 * base path or the base path itself. */
+-			if (*rest == '\0')
+-				return TRUE;
+-			else if (*rest == '/')
+-			{
+-				const char* token = strstr(&rest[1], "/");
+-
+-				if (!token || (token[1] == '\0'))
+-					return TRUE;
+-			}
+-		}
+-	}
+-
+-	return FALSE;
+-}
+-
++	const char* number = path + sizeof(prefix) - 1;
++	return *number && strspn(number, "0123456789") == strlen(number);
++}
+ #define MAX_USB_DEVICES 100
+ 
+ typedef struct

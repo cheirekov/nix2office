@@ -55,6 +55,10 @@ def choose(machine, q, ask):
     ], default=tc['credentials']))
     is_kiosk = machine['role'] == 'thin'
     if is_kiosk:
+        tc['usb_storage'] = ask(q.confirm(
+            'USB флашки в Windows RDP? Споделят се само флашките, за четене.',
+            default=tc['usb_storage'],
+        ))
         use_kep = ask(q.confirm('Ще се използва ли КЕП през Windows RDP?', default=bool(tc['kep_provider'])))
         tc['kep_provider'] = ask(q.select('Доставчик на КЕП:', choices=[
             q.Choice(label, value=provider) for provider, label in KEP_PROVIDERS.items()
@@ -65,6 +69,8 @@ def choose(machine, q, ask):
         q.Choice('Локални дискове', value='drives', checked='drives' in tc['redirect']),
         q.Choice('USB', value='usb', checked='usb' in tc['redirect']),
     ]
+    if tc['usb_storage']:
+        redirects = [choice for choice in redirects if choice.value not in ('drives', 'usb')]
     if is_kiosk:
         devices = ask(q.checkbox('Пренасочване на устройства:', choices=redirects))
         tc['redirect'] = (['smartcard'] if tc['kep_provider'] else []) + devices

@@ -108,7 +108,12 @@ def _run_once(config, profile, password_file, app=None, shell=None):
             stream.write("\n".join(lines) + "\n")
             stream.flush()
         command = ["xfreerdp", rdp_file, "/cert:tofu"]
+        usb_storage = config.get("usb_storage", False)
+        if usb_storage:
+            command.append("/drive:hotplug,*")
         for key in config.get("redirect", []):
+            if usb_storage and key in ("drives", "usb"):
+                continue
             if key == "drives":
                 if shared:
                     os.makedirs(shared, exist_ok=True)

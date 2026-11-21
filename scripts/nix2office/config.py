@@ -25,7 +25,7 @@ DEFAULTS = {
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
-    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
+    "thin_client": {"credentials": "interactive", "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "usb_storage": False, "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -234,6 +234,10 @@ def validate_machine(raw):
     if m["role"] not in ("office", "hybrid", "thin"):
         raise ConfigError("role: choose office, hybrid or thin.")
     tc = m["thin_client"]
+    if type(tc["usb_storage"]) is not bool:
+        raise ConfigError("thin_client.usb_storage: expected true or false.")
+    if tc["usb_storage"] and m["role"] != "thin":
+        raise ConfigError("thin_client.usb_storage: available for the thin kiosk role.")
     if tc["credentials"] not in ("interactive", "sops"):
         raise ConfigError("thin_client.credentials: choose interactive or sops.")
     if type(tc["fullscreen"]) is not bool:
@@ -304,7 +308,7 @@ def dump_machine(machine):
             continue
         lines.extend(("", f"[{section}]"))
         for key, value in values.items():
-            if section == "thin_client" and key == "kep_provider" and not value:
+            if section == "thin_client" and key in ("kep_provider", "usb_storage") and not value:
                 continue
             if isinstance(value, list) and value and isinstance(value[0], dict):
                 for item in value:

@@ -9,6 +9,15 @@ let
   thin = cfg.thinClient;
   enabled = cfg.role != "office";
   thinOnly = cfg.role == "thin";
+  usbStorage = thinOnly && thin.usbStorage;
+  freerdp = import ../packages/freerdp-vaapi.nix {
+    inherit pkgs;
+    kioskUsb = usbStorage;
+  };
+  usbPython = pkgs.python3.withPackages (ps: [ ps.pyudev ]);
+  usbMenu = pkgs.writeShellScript "nix2office-usb-menu" ''
+    exec ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} menu ${pkgs.xterm}/bin/xterm
+  '';
   smartcard = builtins.elem "smartcard" thin.redirect;
   xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
   appLabel =
@@ -28,6 +37,7 @@ let
     builtins.toJSON {
       credentials = thin.credentials;
       redirect = thin.redirect;
+      usb_storage = usbStorage;
       fullscreen = thin.fullscreen;
       unicode_keyboard = thin.unicodeKeyboard;
       gfx = thin.gfx;
@@ -42,6 +52,7 @@ let
     }
   );
   launcher = pkgs.writeShellScript "nix2office-rdp-launch" ''
+    export PATH=${lib.makeBinPath [ freerdp ]}:$PATH
     exec ${pkgs.python3}/bin/python ${../scripts/rdp-launch.py} --config ${configJson} --password-file ${lib.escapeShellArg thin.passwordFile} "$@"
   '';
   entry = name: comment: exec: {
@@ -110,6 +121,7 @@ let
     ${fullItems}
     ${appItems}
     ${shellItems}
+        ${lib.optionalString usbStorage ''<menu id="usb-eject" label="Безопасно изваждане на USB" execute="${usbMenu}" />''}
         <item label="Прекрати RDP сесията и върни менюто">
           <action name="Execute"><command>${pkgs.procps}/bin/pkill -x xfreerdp</command></action>
         </item>
@@ -144,15 +156,31 @@ in
         assertion = thin.profiles != [ ];
         message = "The RDP thin client requires at least one profile.";
       }
+      {
+        assertion = !thin.usbStorage || thinOnly;
+        message = "USB storage redirection is available only in the thin kiosk role.";
+      }
     ];
     environment.systemPackages = [
-      (import ../packages/freerdp-vaapi.nix { inherit pkgs; })
+      freerdp
     ]
     ++ lib.optionals thinOnly [
       pkgs.xterm
       pkgs.networkmanagerapplet
     ];
     services.pcscd.enable = smartcard;
+    systemd.services.nix2office-usb = lib.mkIf usbStorage {
+      description = "Mount removable USB storage for the Nix2office kiosk";
+      wantedBy = [ "multi-user.target" ];
+      path = [ pkgs.util-linux ];
+      serviceConfig = {
+        ExecStart = "${usbPython}/bin/python ${../scripts/kiosk-usb.py} monitor ${cfg.user.name}";
+        RuntimeDirectory = "nix2office-usb";
+        RuntimeDirectoryMode = "0755";
+        Restart = "on-failure";
+        RestartSec = "3s";
+      };
+    };
     security.polkit = lib.mkIf thinOnly {
       enable = true;
       extraConfig = ''

@@ -51,6 +51,7 @@ let
       "credentials"
       "redirect"
       "kep_provider"
+      "usb_storage"
       "fullscreen"
       "unicode_keyboard"
       "gfx"
@@ -231,6 +232,7 @@ in
     performance.cpuGovernor = performance.cpu_governor or "auto";
   };
   nix2office.thinClient = {
+    usbStorage = thin_client.usb_storage or false;
     credentials = thin_client.credentials or "interactive";
     fullscreen = thin_client.fullscreen or false;
     unicodeKeyboard = thin_client.unicode_keyboard or false;

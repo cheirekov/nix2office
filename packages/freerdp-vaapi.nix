@@ -1,8 +1,12 @@
-{ pkgs }:
+{
+  pkgs,
+  kioskUsb ? false,
+}:
 # FreeRDP 3 with FFmpeg VA-API hardware H.264 decoding enabled (software
 # fallback). OpenH264 is disabled so the libavcodec backend is selected; its
 # WITH_FFMPEG_HWACCEL path auto-uses VA-API on Linux when a driver is present.
 pkgs.freerdp.overrideAttrs (old: {
+  patches = (old.patches or [ ]) ++ pkgs.lib.optional kioskUsb ../patches/freerdp-kiosk-usb.patch;
   cmakeFlags = (old.cmakeFlags or [ ]) ++ [
     "-DWITH_OPENH264=FALSE"
     "-DWITH_FFMPEG_HWACCEL=ON"
