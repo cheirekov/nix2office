@@ -16,7 +16,17 @@ let
   };
   usbPython = pkgs.python3.withPackages (ps: [ ps.pyudev ]);
   usbDialog = pkgs.writeShellScript "nix2office-usb-dialog" ''
-    exec ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} dialog ${pkgs.zenity}/bin/zenity
+    exec ${pkgs.util-linux}/bin/flock -n "$XDG_RUNTIME_DIR/nix2office-usb-dialog.lock" \
+      ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} dialog ${pkgs.zenity}/bin/zenity ${pkgs.xdotool}/bin/xdotool
+  '';
+  usbAction = pkgs.writeShellScript "nix2office-rdp-action" ''
+    case "$1:${"$"}{2-}" in
+      key:) printf '%s\n' 'ctrl+alt+f8' ;;
+      key:ctrl+alt+f8)
+        ${usbDialog} </dev/null >/dev/null 2>&1 &
+        printf '%s\n' 'key-local'
+        ;;
+    esac
   '';
   smartcard = builtins.elem "smartcard" thin.redirect;
   xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
@@ -38,6 +48,7 @@ let
       credentials = thin.credentials;
       redirect = thin.redirect;
       usb_storage = usbStorage;
+      usb_action = if usbStorage then toString usbAction else null;
       kiosk_shared = thinOnly;
       fullscreen = thin.fullscreen;
       unicode_keyboard = thin.unicodeKeyboard;
@@ -220,7 +231,13 @@ in
       };
       xdg.configFile."openbox/autostart" = lib.mkIf thinOnly {
         text = ''
-          ${launcher} --profile "${(lib.head thin.profiles).name}" --wait-secret-timeout 60 --wait-network-timeout 120 --attempts 6 --backoff 5 &
+          (
+            ${lib.optionalString usbStorage ''
+              ${lib.getExe pkgs.zenity} --info --timeout=4 --title="Nix2office" \
+                --text="Изваждане на флашка: Ctrl+Alt+F8" || true
+            ''}
+            exec ${launcher} --profile "${(lib.head thin.profiles).name}" --wait-secret-timeout 60 --wait-network-timeout 120 --attempts 6 --backoff 5
+          ) &
         '';
         executable = true;
       };

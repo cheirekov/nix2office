@@ -197,11 +197,29 @@ def usb_request(request):
         return json.loads(client.recv(131072))
 
 
-def dialog(zenity):
+def dialog(zenity, xdotool):
     title = "--title=Безопасно изваждане на USB"
 
+    def x11(*args):
+        try:
+            return subprocess.check_output([xdotool, *args], text=True, stderr=subprocess.DEVNULL, timeout=2).strip()
+        except (subprocess.SubprocessError, OSError):
+            return ""
+
+    def show(*args):
+        # Activate the GTK window explicitly so Openbox puts it over fullscreen RDP.
+        previous = x11("getactivewindow")
+        with subprocess.Popen([zenity, title, *args], stdout=subprocess.PIPE, text=True) as window:
+            dialog_window = x11("search", "--sync", "--onlyvisible", "--pid", str(window.pid)).splitlines()
+            if dialog_window:
+                x11("windowactivate", dialog_window[0])
+            output, _ = window.communicate()
+        if previous and not x11("getactivewindow"):
+            x11("windowactivate", previous)
+        return window.returncode, output.strip()
+
     def message(kind, text):
-        subprocess.run([zenity, kind, title, "--no-markup", "--text=" + text], check=False)
+        show(kind, "--no-markup", "--text=" + text)
 
     try:
         drives = usb_request("list")
@@ -210,15 +228,14 @@ def dialog(zenity):
             return
         choices = [value for drive in drives for value in
                    (drive["token"], drive["alias"], drive["label"], drive["size"])]
-        chosen = subprocess.run([
-            zenity, "--list", title, "--width=520", "--height=300",
+        status, token = show(
+            "--list", "--width=520", "--height=300",
             "--ok-label=Извади", "--cancel-label=Отказ",
             "--text=Затвори файловете от флашката и избери кой диск да извадиш.",
             "--column=ID", "--hide-column=1", "--print-column=1",
             "--column=Име в Windows", "--column=Етикет", "--column=Размер", "--", *choices,
-        ], capture_output=True, text=True, check=False)
-        token = chosen.stdout.strip()
-        if chosen.returncode or not token:
+        )
+        if status or not token:
             return
         result = usb_request(token)
         message("--info" if result["ok"] else "--warning", result["message"])
@@ -227,5 +244,5 @@ def dialog(zenity):
 
 
 if __name__ == "__main__":
-    action, value = sys.argv[1:]
-    {"monitor": monitor, "dialog": dialog}[action](value)
+    action, *args = sys.argv[1:]
+    {"monitor": monitor, "dialog": dialog}[action](*args)

@@ -265,7 +265,10 @@ in
       xkb = {
         layout = "us,bg";
         variant = ",${bulgarianVariant}";
-        options = "grp:alt_shift_toggle";
+        # Let the kiosk client receive Ctrl+Alt+F8 instead of the Xorg VT action.
+        options =
+          "grp:alt_shift_toggle"
+          + lib.optionalString (!officeEnabled && cfg.thinClient.usbStorage) ",srvrkeys:none";
       };
       desktopManager.xfce.enable = officeEnabled;
       displayManager.lightdm.enable = true;
