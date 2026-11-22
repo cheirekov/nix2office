@@ -17,7 +17,7 @@ let
   usbPython = pkgs.python3.withPackages (ps: [ ps.pyudev ]);
   usbDialog = pkgs.writeShellScript "nix2office-usb-dialog" ''
     exec ${pkgs.util-linux}/bin/flock -n "$XDG_RUNTIME_DIR/nix2office-usb-dialog.lock" \
-      ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} dialog ${pkgs.zenity}/bin/zenity ${pkgs.xdotool}/bin/xdotool
+      ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} dialog ${pkgs.zenity}/bin/zenity ${pkgs.xdotool}/bin/xdotool ${lib.getLib pkgs.libx11}/lib/libX11.so.6 "$@"
   '';
   usbAction = pkgs.writeShellScript "nix2office-rdp-action" ''
     case "$1:${"$"}{2-}" in
@@ -25,7 +25,7 @@ let
       # FreeRDP requires a nonempty reply to its event subscription query.
       xevent:) printf '%s\n' 'none' ;;
       key:ctrl+alt+f8)
-        ${usbDialog} </dev/null >/dev/null 2>&1 &
+        ${usbDialog} rdp </dev/null >/dev/null 2>&1 &
         printf '%s\n' 'key-local'
         ;;
     esac

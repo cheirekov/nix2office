@@ -1,4 +1,5 @@
 """Mount USB flash volumes for the kiosk and provide a safe eject dialog."""
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -197,7 +198,21 @@ def usb_request(request):
         return json.loads(client.recv(131072))
 
 
-def dialog(zenity, xdotool):
+def attach_x11_dialog(libx11, child, parent):
+    x11 = ctypes.CDLL(libx11)
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XSetTransientForHint.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+    display = x11.XOpenDisplay(None)
+    if display:
+        try:
+            x11.XSetTransientForHint(display, int(child), int(parent))
+        finally:
+            x11.XCloseDisplay(display)
+
+
+def dialog(zenity, xdotool, libx11, origin="menu"):
     title = "--title=Безопасно изваждане на USB"
 
     def x11(*args):
@@ -206,16 +221,20 @@ def dialog(zenity, xdotool):
         except (subprocess.SubprocessError, OSError):
             return ""
 
+    parent = x11("getactivewindow") if origin == "rdp" else ""
+
     def show(*args):
-        # Activate the GTK window explicitly so Openbox puts it over fullscreen RDP.
-        previous = x11("getactivewindow")
         with subprocess.Popen([zenity, title, *args], stdout=subprocess.PIPE, text=True) as window:
             dialog_window = x11("search", "--sync", "--onlyvisible", "--pid", str(window.pid)).splitlines()
             if dialog_window:
-                x11("windowactivate", dialog_window[0])
+                child = dialog_window[0]
+                if parent.isdecimal() and child.isdecimal() and parent != child:
+                    # A transient inherits the RDP window's fullscreen layer in Openbox.
+                    attach_x11_dialog(libx11, child, parent)
+                x11("windowactivate", child)
             output, _ = window.communicate()
-        if previous and not x11("getactivewindow"):
-            x11("windowactivate", previous)
+        if parent:
+            x11("windowactivate", parent)
         return window.returncode, output.strip()
 
     def message(kind, text):
