@@ -22,6 +22,8 @@ let
   usbAction = pkgs.writeShellScript "nix2office-rdp-action" ''
     case "$1:${"$"}{2-}" in
       key:) printf '%s\n' 'ctrl+alt+f8' ;;
+      # FreeRDP requires a nonempty reply to its event subscription query.
+      xevent:) printf '%s\n' 'none' ;;
       key:ctrl+alt+f8)
         ${usbDialog} </dev/null >/dev/null 2>&1 &
         printf '%s\n' 'key-local'
