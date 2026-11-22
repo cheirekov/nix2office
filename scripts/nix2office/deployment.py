@@ -283,7 +283,8 @@ def summary(m):
             kep = KEP_PROVIDERS.get(tc["kep_provider"], "доставчикът не е зададен")
             print(f'КЕП през RDP: {kep}' if "smartcard" in tc["redirect"] else 'КЕП през RDP: изключен')
             if tc["usb_storage"]:
-                print("USB флашки през RDP: автоматично, само за четене; без Shared и общо USB пренасочване")
+                print("USB флашки през RDP: автоматично, само за четене")
+            print("Папка Shared през RDP: включена")
     rs = m["remote_support"]
     rustdesk = rs["mode"]
     if rs["mode"] != "off":

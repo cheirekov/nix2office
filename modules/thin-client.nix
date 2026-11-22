@@ -15,8 +15,8 @@ let
     kioskUsb = usbStorage;
   };
   usbPython = pkgs.python3.withPackages (ps: [ ps.pyudev ]);
-  usbMenu = pkgs.writeShellScript "nix2office-usb-menu" ''
-    exec ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} menu ${pkgs.xterm}/bin/xterm
+  usbDialog = pkgs.writeShellScript "nix2office-usb-dialog" ''
+    exec ${pkgs.python3}/bin/python ${../scripts/kiosk-usb.py} dialog ${pkgs.zenity}/bin/zenity
   '';
   smartcard = builtins.elem "smartcard" thin.redirect;
   xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
@@ -38,6 +38,7 @@ let
       credentials = thin.credentials;
       redirect = thin.redirect;
       usb_storage = usbStorage;
+      kiosk_shared = thinOnly;
       fullscreen = thin.fullscreen;
       unicode_keyboard = thin.unicodeKeyboard;
       gfx = thin.gfx;
@@ -121,7 +122,8 @@ let
     ${fullItems}
     ${appItems}
     ${shellItems}
-        ${lib.optionalString usbStorage ''<menu id="usb-eject" label="Безопасно изваждане на USB" execute="${usbMenu}" />''}
+        ${menuEntry "Файлов мениджър — Shared" "${pkgs.thunar}/bin/thunar /home/${cfg.user.name}/Shared"}
+        ${lib.optionalString usbStorage (menuEntry "Безопасно изваждане на USB" (toString usbDialog))}
         <item label="Прекрати RDP сесията и върни менюто">
           <action name="Execute"><command>${pkgs.procps}/bin/pkill -x xfreerdp</command></action>
         </item>
@@ -167,6 +169,7 @@ in
     ++ lib.optionals thinOnly [
       pkgs.xterm
       pkgs.networkmanagerapplet
+      pkgs.thunar
     ];
     services.pcscd.enable = smartcard;
     systemd.services.nix2office-usb = lib.mkIf usbStorage {
@@ -203,7 +206,14 @@ in
       enable = true;
       user = cfg.user.name;
     };
-    home-manager.users.${cfg.user.name} = {
+    home-manager.users.${cfg.user.name} = { lib, ... }: {
+      home.activation.kioskShared = lib.mkIf thinOnly (
+        lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+          if [ ! -e "$HOME/Shared" ] && [ ! -L "$HOME/Shared" ]; then
+            run ${pkgs.coreutils}/bin/mkdir -m 700 "$HOME/Shared"
+          fi
+        ''
+      );
       xdg.desktopEntries = entries;
       xdg.configFile."openbox/menu.xml" = lib.mkIf thinOnly {
         text = menuXml;

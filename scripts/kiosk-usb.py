@@ -1,17 +1,16 @@
-"""Mount USB flash volumes for the kiosk and service its Openbox eject menu."""
+"""Mount USB flash volumes for the kiosk and provide a safe eject dialog."""
 import json
 import os
 from pathlib import Path
 import pwd
 import re
 import selectors
-import shlex
 import signal
 import socket
 import stat
 import subprocess
 import sys
-from xml.sax.saxutils import escape
+from uuid import uuid4
 
 ROOT = Path("/run/nix2office-usb")
 VOLUMES = ROOT / "volumes"
@@ -36,7 +35,7 @@ def disk_sequence(name):
 
 
 def removable_media():
-    columns = "KNAME,PATH,TYPE,TRAN,RM,FSTYPE,MOUNTPOINTS,MAJ:MIN"
+    columns = "KNAME,PATH,TYPE,TRAN,RM,FSTYPE,MOUNTPOINTS,MAJ:MIN,LABEL,SIZE"
     disks = json.loads(command("lsblk", "--json", "--tree", "--output", columns))["blockdevices"]
     for disk in disks:
         if disk["type"] != "disk" or disk["tran"] != "usb" or not disk["rm"]:
@@ -92,7 +91,7 @@ def monitor(user):
     devices = pyudev.Monitor.from_netlink(pyudev.Context())
     devices.filter_by(subsystem="block")
     devices.start()
-    mounted = {}  # alias -> (disk identity, partition kernel name)
+    mounted = {}  # alias -> ((disk identity, partition kernel name), dialog metadata)
     ejected = set()
     failed = set()
 
@@ -101,11 +100,11 @@ def monitor(user):
         available = {(disk, volume["kname"]) for disk, volumes in present.items() for volume in volumes}
         ejected.intersection_update(present)
         failed.intersection_update(available)
-        for alias, identity in list(mounted.items()):
+        for alias, (identity, _) in list(mounted.items()):
             if identity not in available:
                 remove_volume(alias, detached=True)
                 del mounted[alias]
-        known = set(mounted.values())
+        known = {identity for identity, _ in mounted.values()}
         for disk, volumes in present.items():
             if disk in ejected:
                 continue
@@ -124,23 +123,30 @@ def monitor(user):
                         failed.add(identity)
                         print(f"{alias}: {error}", file=sys.stderr, flush=True)
                         continue
-                    mounted[alias] = identity
+                    mounted[alias] = (identity, {
+                        "alias": alias,
+                        "label": " ".join((volume["label"] or "").split())[:80] or "Без етикет",
+                        "size": volume["size"],
+                        "token": uuid4().hex,
+                    })
                     print(f"Mounted {alias} read-only", flush=True)
 
-    def eject(alias):
-        if not ALIAS.fullmatch(alias) or alias not in mounted:
-            return "Флашката вече не е налична."
-        disk = mounted[alias][0]
+    def eject(token):
+        rescan()
+        selected = next((identity for identity, info in mounted.values() if info["token"] == token), None)
+        if selected is None:
+            return {"ok": False, "message": "Флашката вече не е налична."}
+        disk = selected[0]
         # Suppress remount until a physical unplug, including on a partial eject.
         ejected.add(disk)
         for name, (identity, _) in list(mounted.items()):
-            if identity == disk:
+            if identity[0] == disk:
                 try:
                     remove_volume(name)
                 except (OSError, subprocess.TimeoutExpired):
-                    return "Флашката е заета. Затвори файловете и опитай пак."
+                    return {"ok": False, "message": "Флашката е заета. Затвори файловете и опитай пак."}
                 del mounted[name]
-        return "Можеш безопасно да извадиш флашката."
+        return {"ok": True, "message": "Можеш безопасно да извадиш флашката."}
 
     def stop(_signum, _frame):
         raise SystemExit(0)
@@ -168,8 +174,13 @@ def monitor(user):
                         with peer:
                             peer.settimeout(1)
                             try:
-                                alias = peer.recv(32).decode("ascii")
-                                peer.sendall(eject(alias).encode())
+                                request = peer.recv(64).decode("ascii")
+                                if request == "list":
+                                    keys = sorted(mounted, key=lambda alias: int(alias.split("-")[1]))
+                                    result = [mounted[key][1] for key in keys]
+                                else:
+                                    result = eject(request)
+                                peer.sendall(json.dumps(result, ensure_ascii=False).encode())
                             except (OSError, UnicodeError):
                                 continue
     finally:
@@ -178,32 +189,43 @@ def monitor(user):
             remove_volume(alias, detached=True)
 
 
-def menu(terminal):
-    print("<openbox_pipe_menu>")
-    aliases = sorted(
-        (path.name for path in VOLUMES.glob("USB-*") if ALIAS.fullmatch(path.name)),
-        key=lambda alias: int(alias.split("-")[1]),
-    )
-    if not aliases:
-        print('<separator label="Няма включени флашки" />')
-    for alias in aliases:
-        action = shlex.join([terminal, "-e", sys.executable, __file__, "eject", alias])
-        print(f'<item label="Извади {alias}"><action name="Execute"><command>{escape(action)}</command></action></item>')
-    print("</openbox_pipe_menu>")
-
-
-def request_eject(alias):
+def usb_request(request):
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as client:
         client.settimeout(20)
-        try:
-            client.connect(str(SOCKET))
-            client.sendall(alias.encode())
-            print(client.recv(1024).decode())
-        except OSError:
-            print("Киоскът не потвърди изваждането. Остави флашката включена.")
-    input("Enter за затваряне.")
+        client.connect(str(SOCKET))
+        client.sendall(request.encode())
+        return json.loads(client.recv(131072))
+
+
+def dialog(zenity):
+    title = "--title=Безопасно изваждане на USB"
+
+    def message(kind, text):
+        subprocess.run([zenity, kind, title, "--no-markup", "--text=" + text], check=False)
+
+    try:
+        drives = usb_request("list")
+        if not drives:
+            message("--info", "Няма включени флашки за изваждане.")
+            return
+        choices = [value for drive in drives for value in
+                   (drive["token"], drive["alias"], drive["label"], drive["size"])]
+        chosen = subprocess.run([
+            zenity, "--list", title, "--width=520", "--height=300",
+            "--ok-label=Извади", "--cancel-label=Отказ",
+            "--text=Затвори файловете от флашката и избери кой диск да извадиш.",
+            "--column=ID", "--hide-column=1", "--print-column=1",
+            "--column=Име в Windows", "--column=Етикет", "--column=Размер", "--", *choices,
+        ], capture_output=True, text=True, check=False)
+        token = chosen.stdout.strip()
+        if chosen.returncode or not token:
+            return
+        result = usb_request(token)
+        message("--info" if result["ok"] else "--warning", result["message"])
+    except (OSError, ValueError):
+        message("--warning", "Киоскът не потвърди изваждането. Остави флашката включена.")
 
 
 if __name__ == "__main__":
     action, value = sys.argv[1:]
-    {"monitor": monitor, "menu": menu, "eject": request_eject}[action](value)
+    {"monitor": monitor, "dialog": dialog}[action](value)

@@ -56,7 +56,7 @@ def choose(machine, q, ask):
     is_kiosk = machine['role'] == 'thin'
     if is_kiosk:
         tc['usb_storage'] = ask(q.confirm(
-            'USB флашки в Windows RDP? Споделят се само флашките, за четене.',
+            'USB флашки в Windows RDP? Флашките са само за четене.',
             default=tc['usb_storage'],
         ))
         use_kep = ask(q.confirm('Ще се използва ли КЕП през Windows RDP?', default=bool(tc['kep_provider'])))
@@ -66,11 +66,13 @@ def choose(machine, q, ask):
     redirects = [
         q.Choice('Clipboard', value='clipboard', checked='clipboard' in tc['redirect']),
         q.Choice('Аудио', value='audio', checked='audio' in tc['redirect']),
-        q.Choice('Локални дискове', value='drives', checked='drives' in tc['redirect']),
+        q.Choice('Папка Shared', value='drives', checked='drives' in tc['redirect']),
         q.Choice('USB', value='usb', checked='usb' in tc['redirect']),
     ]
-    if tc['usb_storage']:
-        redirects = [choice for choice in redirects if choice.value not in ('drives', 'usb')]
+    if is_kiosk:
+        print('Папката Shared е постоянно достъпна през RDP.')
+        redirects = [choice for choice in redirects
+                     if choice.value != 'drives' and (not tc['usb_storage'] or choice.value != 'usb')]
     if is_kiosk:
         devices = ask(q.checkbox('Пренасочване на устройства:', choices=redirects))
         tc['redirect'] = (['smartcard'] if tc['kep_provider'] else []) + devices

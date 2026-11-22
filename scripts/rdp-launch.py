@@ -112,7 +112,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         if usb_storage:
             command.append("/drive:hotplug,*")
         for key in config.get("redirect", []):
-            if usb_storage and key in ("drives", "usb"):
+            if (usb_storage and key == "usb") or (config.get("kiosk_shared") and key == "drives"):
                 continue
             if key == "drives":
                 if shared:
@@ -120,6 +120,13 @@ def _run_once(config, profile, password_file, app=None, shell=None):
                     command.append(f"/drive:Shared,{shared}")
                 continue
             command.extend(REDIRECT.get(key, []))
+        if config.get("kiosk_shared"):
+            folder = Path(shared)
+            if not folder.is_symlink():
+                folder.mkdir(mode=0o700, exist_ok=True)
+                command.append(f"/drive:Shared,{folder}")
+            else:
+                print("Shared е символна връзка и няма да се споделя.", file=sys.stderr)
         if shell:
             command.extend(alternate_shell_flags(shell))
         elif app:
