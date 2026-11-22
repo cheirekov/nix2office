@@ -112,7 +112,7 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         if usb_storage:
             command.append("/drive:hotplug,*")
             if config.get("usb_action") and not app:
-                command.append(f'/action:script:{config["usb_action"]}')
+                command.append(f'/action-script:{config["usb_action"]}')
         for key in config.get("redirect", []):
             if (usb_storage and key == "usb") or (config.get("kiosk_shared") and key == "drives"):
                 continue
