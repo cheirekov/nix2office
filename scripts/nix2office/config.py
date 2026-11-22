@@ -25,7 +25,7 @@ DEFAULTS = {
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
-    "thin_client": {"credentials": "interactive", "allow_other_account": False, "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "usb_storage": False, "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
+    "thin_client": {"credentials": "interactive", "allow_other_account": False, "allow_personal_connections": False, "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "usb_storage": False, "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -236,6 +236,8 @@ def validate_machine(raw):
     tc = m["thin_client"]
     if type(tc["allow_other_account"]) is not bool:
         raise ConfigError("thin_client.allow_other_account: expected true or false.")
+    if type(tc["allow_personal_connections"]) is not bool:
+        raise ConfigError("thin_client.allow_personal_connections: expected true or false.")
     if type(tc["usb_storage"]) is not bool:
         raise ConfigError("thin_client.usb_storage: expected true or false.")
     if tc["usb_storage"] and m["role"] != "thin":
@@ -310,7 +312,7 @@ def dump_machine(machine):
             continue
         lines.extend(("", f"[{section}]"))
         for key, value in values.items():
-            if section == "thin_client" and key in ("kep_provider", "usb_storage", "allow_other_account") and not value:
+            if section == "thin_client" and key in ("kep_provider", "usb_storage", "allow_other_account", "allow_personal_connections") and not value:
                 continue
             if isinstance(value, list) and value and isinstance(value[0], dict):
                 for item in value:

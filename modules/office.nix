@@ -103,6 +103,7 @@ in
     };
     thinClient = {
       allowOtherAccount = lib.mkEnableOption "manual Windows account entry for configured RDP profiles";
+      allowPersonalConnections = lib.mkEnableOption "user-managed RDP connections";
       usbStorage = lib.mkEnableOption "read-only USB storage redirection in the thin kiosk";
       credentials = lib.mkOption {
         type = lib.types.enum [

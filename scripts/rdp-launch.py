@@ -8,9 +8,12 @@ TCP reachability of the Windows host, then retries a failed connection with
 backoff. Without those flags it keeps the one-shot behavior used by launchers.
 """
 import argparse
+import fcntl
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -86,10 +89,10 @@ def wait_for_tcp(host, port, timeout):
     return False
 
 
-def ask_other_account(dialog, profile):
+def ask_other_account(dialog, profile, default_user=""):
     title = f'--title=Вход в Windows — {profile["name"]}'
     user = subprocess.run(
-        [dialog, "--entry", title, "--text=Въведи потребителско име за Windows."],
+        [dialog, "--entry", title, "--text=Въведи потребителско име за Windows.", f"--entry-text={default_user}"],
         capture_output=True, text=True, check=False,
     )
     if user.returncode:
@@ -111,6 +114,8 @@ def ask_other_account(dialog, profile):
 
 def _run_once(config, profile, password_file, app=None, shell=None, *, account=None):
     host = profile.get("host", "")
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
     user = profile.get("user", "") if account is None else ""
     port = profile.get("port", 3389)
     shared = config.get("shared", "")
@@ -133,6 +138,8 @@ def _run_once(config, profile, password_file, app=None, shell=None, *, account=N
             stream.write("\n".join(lines) + "\n")
             stream.flush()
         command = ["xfreerdp", rdp_file, "/cert:tofu"]
+        if config.get("personal_session"):
+            command.append("-clipboard")
         usb_storage = config.get("usb_storage", False)
         if usb_storage:
             command.append("/drive:hotplug,*")
@@ -188,11 +195,151 @@ def _run_once(config, profile, password_file, app=None, shell=None, *, account=N
             pass
 
 
+def run_manual_account(dialog, config, profile, default_user=""):
+    account = ask_other_account(dialog, profile, default_user)
+    if account is None:
+        return 0
+    status = _run_once(config, profile, None, account=account)
+    if status in NORMAL_SESSION_EXITS:
+        return 0
+    subprocess.run([
+        dialog, "--error", "--title=Вход в Windows", "--no-markup",
+        "--text=Връзката не успя. Провери адреса, акаунта и паролата.",
+    ], check=False)
+    return status
+
+
+def personal_profile(name, host, port, user):
+    if not all(isinstance(v, str) and not any(ord(c) < 32 or ord(c) == 127 for c in v)
+               for v in (name, host, port, user)):
+        raise ValueError("Полетата трябва да съдържат обикновен текст.")
+    host = host.strip()
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    try:
+        if "%" in host:
+            raise ValueError
+        ipaddress.ip_address(host)
+    except ValueError:
+        if not host or len(host) > 253 or not all(
+            re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+            for label in host.removesuffix(".").split(".")
+        ):
+            raise ValueError("Въведи IP адрес или DNS име. Портът е в отделно поле.") from None
+    if not re.fullmatch(r"[0-9]{1,5}", port) or not 1 <= int(port) <= 65535:
+        raise ValueError("Портът трябва да е число от 1 до 65535.")
+    name, user = name.strip(), user.strip()
+    if not 1 <= len(name) <= 80 or len(user) > 256:
+        raise ValueError("Името на връзката трябва да е от 1 до 80 знака, а потребителят до 256.")
+    return {"name": name, "host": host, "port": int(port), "user": user}
+
+
+def personal_menu(dialog, config):
+    title = "--title=Лични RDP връзки"
+
+    def prompt(*args):
+        result = subprocess.run([dialog, title, *args], capture_output=True, text=True, check=False)
+        return result.stdout.removesuffix("\n") if result.returncode == 0 else None
+
+    def edit(previous):
+        fields = (
+            ("name", "Име на връзката", ""),
+            ("host", "Windows адрес (IP или DNS име)", ""),
+            ("port", "RDP порт", "3389"),
+            ("user", "Windows потребител (по желание)", ""),
+        )
+        values = []
+        for key, label, default in fields:
+            value = prompt("--entry", f"--text={label}", f'--entry-text={previous.get(key, default)}')
+            if value is None:
+                return None
+            values.append(value)
+        return personal_profile(*values)
+
+    state_home = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    directory = state_home / "nix2office"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = directory / "rdp-connections.json"
+    with (directory / "rdp-connections.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            prompt("--info", "--text=Менюто за лични връзки вече е отворено.")
+            return 0
+        try:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(saved, list):
+                raise ValueError
+            if any(not isinstance(p, dict) or set(p) != {"name", "host", "port", "user"} for p in saved):
+                raise ValueError
+            profiles = [personal_profile(p["name"], p["host"], str(p["port"]), p["user"]) for p in saved]
+        except FileNotFoundError:
+            profiles = []
+        except (OSError, ValueError, KeyError, TypeError):
+            prompt("--error", "--text=Запазените лични връзки не могат да се прочетат.")
+            return 1
+
+        while True:
+            rows = ["add", "Добави връзка", ""]
+            for index, profile in enumerate(profiles):
+                rows.extend([str(index), profile["name"], f'{profile["host"]} · {profile["port"]}'])
+            chosen = prompt("--list", "--width=560", "--height=360", "--ok-label=Избери",
+                            "--cancel-label=Затвори", "--column=ID", "--hide-column=1",
+                            "--print-column=1", "--column=Връзка", "--column=Адрес и порт", "--", *rows)
+            if not chosen:
+                return 0
+            try:
+                if chosen == "add":
+                    profile = edit({})
+                    if profile is None:
+                        continue
+                    profiles.append(profile)
+                else:
+                    index = int(chosen)
+                    if not 0 <= index < len(profiles):
+                        raise ValueError("Избери връзка от списъка.")
+                    profile = profiles[index]
+                    action = prompt("--list", "--width=390", "--height=275", "--ok-label=Избери",
+                                    "--column=ID", "--hide-column=1", "--print-column=1",
+                                    "--column=Действие", "connect", "Свържи", "edit", "Редактирай",
+                                    "remove", "Премахни")
+                    if action == "connect":
+                        # Personal destinations do not receive the kiosk's local resources.
+                        session = {"fullscreen": config.get("fullscreen", False), "personal_session": True}
+                        run_manual_account(dialog, session, profile, profile["user"])
+                        continue
+                    if action == "edit":
+                        changed = edit(profile)
+                        if changed is None:
+                            continue
+                        profiles[index] = changed
+                    elif action == "remove":
+                        if prompt("--question", "--text=Премахване на избраната лична връзка?",
+                                  "--ok-label=Премахни", "--cancel-label=Отказ") is None:
+                            continue
+                        del profiles[index]
+                    else:
+                        continue
+                fd, temporary = tempfile.mkstemp(dir=directory)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                        json.dump(profiles, stream, ensure_ascii=False, indent=2)
+                    os.replace(temporary, path)
+                finally:
+                    Path(temporary).unlink(missing_ok=True)
+            except (ValueError, OSError) as error:
+                prompt("--error", "--no-markup", f"--text={error}")
+                if isinstance(error, OSError):
+                    return 1
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Launch an RDP session for Nix2office.")
     parser.add_argument("--config", required=True, help="RDP config JSON produced at build time.")
     parser.add_argument("--password-file", help="Optional decrypted password file (sops).")
-    parser.add_argument("--profile", required=True, help="Profile name from the config.")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--profile", help="Profile name from the config.")
+    mode.add_argument("--personal", action="store_true", help="Manage and open personal RDP connections.")
     parser.add_argument("--app", help="Optional RemoteApp alias.")
     parser.add_argument("--shell", help="Optional program path to run as the alternate shell (full session).")
     parser.add_argument("--other-account", action="store_true", help="Prompt for Windows credentials for this connection.")
@@ -209,6 +356,13 @@ def main(argv=None):
         parser.error("--app and --shell are mutually exclusive.")
 
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    if args.personal:
+        if args.other_account or args.app or args.shell:
+            parser.error("--personal opens full RDP sessions from its own menu.")
+        dialog = config.get("personal_dialog")
+        if not dialog:
+            parser.error("Personal RDP connections are disabled.")
+        return personal_menu(dialog, config)
     profile = next((p for p in config.get("profiles", []) if p.get("name") == args.profile), None)
     if profile is None:
         sys.exit(f"Unknown RDP profile: {args.profile}")
@@ -219,18 +373,7 @@ def main(argv=None):
             parser.error("Manual Windows account entry is disabled.")
         if args.app or args.shell:
             parser.error("--other-account requires a full RDP session.")
-        account = ask_other_account(dialog, profile)
-        if account is None:
-            return 0
-        status = _run_once(config, profile, None, account=account)
-        if status in NORMAL_SESSION_EXITS:
-            return 0
-        else:
-            subprocess.run([
-                dialog, "--error", "--title=Вход в Windows", "--no-markup",
-                "--text=Връзката не успя. Провери акаунта и паролата или опитай отново.",
-            ], check=False)
-            return status
+        return run_manual_account(dialog, config, profile)
 
     credentials = config.get("credentials", "interactive")
     if args.wait_secret_timeout > 0 and credentials == "sops" and args.password_file:

@@ -57,6 +57,10 @@ def choose(machine, q, ask):
         'Разреши „Вход с друг акаунт“ за готовите RDP профили?',
         default=tc['allow_other_account'],
     ))
+    tc['allow_personal_connections'] = ask(q.confirm(
+        'Разреши добавяне и редактиране на лични RDP връзки?',
+        default=tc['allow_personal_connections'],
+    ))
     is_kiosk = machine['role'] == 'thin'
     if is_kiosk:
         tc['usb_storage'] = ask(q.confirm(

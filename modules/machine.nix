@@ -50,6 +50,7 @@ let
     thin_client = [
       "credentials"
       "allow_other_account"
+      "allow_personal_connections"
       "redirect"
       "kep_provider"
       "usb_storage"
@@ -234,6 +235,7 @@ in
   };
   nix2office.thinClient = {
     allowOtherAccount = thin_client.allow_other_account or false;
+    allowPersonalConnections = thin_client.allow_personal_connections or false;
     usbStorage = thin_client.usb_storage or false;
     credentials = thin_client.credentials or "interactive";
     fullscreen = thin_client.fullscreen or false;

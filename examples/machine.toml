@@ -85,6 +85,7 @@ direct_ip_access = false # allow RustDesk direct IP on TCP 21118 (read initial I
 # [thin_client]
 # credentials = "interactive" # interactive (prompt, nothing stored) or sops (encrypted)
 # allow_other_account = false # show a separate Windows sign-in for configured profiles
+# allow_personal_connections = false # allow the user to manage additional RDP connections
 # redirect = ["smartcard", "clipboard", "audio", "drives", "usb"]
 # kep_provider = "unspecified" # thin only; requires "smartcard" in redirect. See docs/rdp-thin-client-bg.md.
 # usb_storage = true # thin only; read-only USB disks alongside Shared, disables raw USB

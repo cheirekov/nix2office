@@ -49,6 +49,7 @@ let
     builtins.toJSON {
       credentials = thin.credentials;
       account_dialog = if thin.allowOtherAccount then lib.getExe pkgs.zenity else null;
+      personal_dialog = if thin.allowPersonalConnections then lib.getExe pkgs.zenity else null;
       redirect = thin.redirect;
       usb_storage = usbStorage;
       usb_action = if usbStorage then toString usbAction else null;
@@ -117,7 +118,10 @@ let
         ) (builtins.filter isPath p.remoteApps)
       ) thin.profiles;
     in
-    lib.listToAttrs (full ++ otherAccounts ++ apps ++ shells);
+    lib.listToAttrs (full ++ otherAccounts ++ apps ++ shells)
+    // lib.optionalAttrs thin.allowPersonalConnections {
+      rdp-personal = entry "Лични RDP връзки" "Добави или отвори лична връзка" "${launcher} --personal";
+    };
   menuEntry = label: command: ''
     <item label="${xml label}">
       <action name="Execute"><command>${xml command}</command></action>
@@ -150,6 +154,9 @@ let
     ${fullItems}
     ${appItems}
     ${shellItems}
+        ${lib.optionalString thin.allowPersonalConnections (
+          menuEntry "Лични RDP връзки" "${launcher} --personal"
+        )}
         ${menuEntry "Файлов мениджър — Shared" "${pkgs.thunar}/bin/thunar /home/${cfg.user.name}/Shared"}
         ${lib.optionalString usbStorage (menuEntry "Безопасно изваждане на USB" (toString usbDialog))}
         <item label="Прекрати RDP сесията и върни менюто">

@@ -281,6 +281,8 @@ def summary(m):
         print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
         if tc["allow_other_account"]:
             print("RDP: разрешен е вход с друг акаунт за готовите профили")
+        if tc["allow_personal_connections"]:
+            print("RDP: разрешени са лични връзки")
         if m["role"] == "thin":
             kep = KEP_PROVIDERS.get(tc["kep_provider"], "доставчикът не е зададен")
             print(f'КЕП през RDP: {kep}' if "smartcard" in tc["redirect"] else 'КЕП през RDP: изключен')
