@@ -48,6 +48,7 @@ let
   configJson = pkgs.writeText "rdp-config.json" (
     builtins.toJSON {
       credentials = thin.credentials;
+      account_dialog = if thin.allowOtherAccount then lib.getExe pkgs.zenity else null;
       redirect = thin.redirect;
       usb_storage = usbStorage;
       usb_action = if usbStorage then toString usbAction else null;
@@ -87,6 +88,16 @@ let
           entry "RDP — ${p.name}" "Пълна отдалечена сесия" ''${launcher} --profile "${p.name}"''
         )
       ) thin.profiles;
+      otherAccounts = lib.optionals thin.allowOtherAccount (
+        lib.imap1 (
+          i: p:
+          lib.nameValuePair "rdp-other-account-${toString i}" (
+            entry "Вход с друг акаунт — ${p.name}" "Въведи Windows потребител и парола" ''
+              ${launcher} --profile "${p.name}" --other-account
+            ''
+          )
+        ) thin.profiles
+      );
       apps = lib.concatMap (
         p:
         lib.imap1 (
@@ -106,13 +117,17 @@ let
         ) (builtins.filter isPath p.remoteApps)
       ) thin.profiles;
     in
-    lib.listToAttrs (full ++ apps ++ shells);
+    lib.listToAttrs (full ++ otherAccounts ++ apps ++ shells);
   menuEntry = label: command: ''
     <item label="${xml label}">
       <action name="Execute"><command>${xml command}</command></action>
     </item>'';
   fullItems = lib.concatMapStringsSep "\n" (
-    p: menuEntry "RDP — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name}"
+    p:
+    menuEntry "RDP — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name}"
+    + lib.optionalString thin.allowOtherAccount (
+      menuEntry "Вход с друг акаунт — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name} --other-account"
+    )
   ) thin.profiles;
   appItems = lib.concatMapStringsSep "\n" (
     p:

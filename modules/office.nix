@@ -102,6 +102,7 @@ in
       description = "Machine role: full office, office plus RDP thin client, or thin client only.";
     };
     thinClient = {
+      allowOtherAccount = lib.mkEnableOption "manual Windows account entry for configured RDP profiles";
       usbStorage = lib.mkEnableOption "read-only USB storage redirection in the thin kiosk";
       credentials = lib.mkOption {
         type = lib.types.enum [

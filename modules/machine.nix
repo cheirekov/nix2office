@@ -49,6 +49,7 @@ let
     tools = [ "comma" ];
     thin_client = [
       "credentials"
+      "allow_other_account"
       "redirect"
       "kep_provider"
       "usb_storage"
@@ -232,6 +233,7 @@ in
     performance.cpuGovernor = performance.cpu_governor or "auto";
   };
   nix2office.thinClient = {
+    allowOtherAccount = thin_client.allow_other_account or false;
     usbStorage = thin_client.usb_storage or false;
     credentials = thin_client.credentials or "interactive";
     fullscreen = thin_client.fullscreen or false;

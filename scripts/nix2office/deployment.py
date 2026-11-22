@@ -279,6 +279,8 @@ def summary(m):
         tc = m["thin_client"]
         profiles = ", ".join(f'{p["name"]} ({p["host"]}:{p.get("port", 3389)})' for p in tc["profiles"])
         print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
+        if tc["allow_other_account"]:
+            print("RDP: разрешен е вход с друг акаунт за готовите профили")
         if m["role"] == "thin":
             kep = KEP_PROVIDERS.get(tc["kep_provider"], "доставчикът не е зададен")
             print(f'КЕП през RDP: {kep}' if "smartcard" in tc["redirect"] else 'КЕП през RDP: изключен')

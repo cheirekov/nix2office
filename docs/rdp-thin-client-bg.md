@@ -30,6 +30,7 @@ Nix2office поддържа три роли за една машина, зада
 
 - role — office, hybrid или thin.
 - thin_client.credentials — interactive (пита за парола при всяко свързване, нищо не се записва) или sops (криптирана парола, виж по-долу).
+- thin_client.allow_other_account — по подразбиране false. При true менюто на киоска или XFCE показва **Вход с друг акаунт** за всеки готов профил. Изборът отваря пълна RDP сесия с въведените Windows име и парола. Паролата се подава към FreeRDP през стандартния вход и не се запазва. Автоматичният старт използва зададения профил и обичайния му начин за вход.
 - thin_client.redirect — подмножество от smartcard, clipboard, audio, drives, usb. Киоскът винаги споделя локалната папка `~/Shared` като `Shared`. При Hybrid това споделяне се включва с `drives`.
 - thin_client.fullscreen — true/false (по подразбиране false). Стартира RDP сесията в пълен екран; излизане/връщане с Ctrl+Alt+Enter.
 - thin_client.unicode_keyboard — true/false (по подразбиране false). При true RemoteApp използва `/kbd:unicode:on` и изпраща символи от локалната клавиатурна подредба.

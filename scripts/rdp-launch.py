@@ -84,9 +84,32 @@ def wait_for_tcp(host, port, timeout):
     return False
 
 
-def _run_once(config, profile, password_file, app=None, shell=None):
+def ask_other_account(dialog, profile):
+    title = f'--title=Вход в Windows — {profile["name"]}'
+    user = subprocess.run(
+        [dialog, "--entry", title, "--text=Въведи потребителско име за Windows."],
+        capture_output=True, text=True, check=False,
+    )
+    if user.returncode:
+        return None
+    name = user.stdout.removesuffix("\n").strip()
+    if not name or any(c in name for c in "\r\n\x00"):
+        return None
+    password = subprocess.run(
+        [dialog, "--password", title],
+        capture_output=True, text=True, check=False,
+    )
+    if password.returncode:
+        return None
+    secret = password.stdout.removesuffix("\n")
+    if not secret or any(c in secret for c in "\r\n\x00"):
+        return None
+    return name, secret
+
+
+def _run_once(config, profile, password_file, app=None, shell=None, *, account=None):
     host = profile.get("host", "")
-    user = profile.get("user", "")
+    user = profile.get("user", "") if account is None else ""
     port = profile.get("port", 3389)
     shared = config.get("shared", "")
 
@@ -95,11 +118,11 @@ def _run_once(config, profile, password_file, app=None, shell=None):
         f"username:s:{user}",
     ]
     password = None
-    if password_file and Path(password_file).is_file():
+    if account is None and password_file and Path(password_file).is_file():
         password = Path(password_file).read_text().strip("\n\r")
     if password:
         lines.append(f"password:s:{password}")
-    else:
+    elif account is None:
         lines.append("prompt for credentials:i:1")
 
     fd, rdp_file = tempfile.mkstemp(suffix=".rdp")
@@ -145,7 +168,16 @@ def _run_once(config, profile, password_file, app=None, shell=None):
                 command.append("/gdi:sw")
         if config.get("fullscreen"):
             command.append("/f")
-        result = subprocess.run(command, check=False)
+        if account is None:
+            result = subprocess.run(command, check=False)
+        else:
+            name, secret = account
+            # FreeRDP accepts one option per line through stdin.
+            options = [*command[1:], f"/u:{name}", f"/p:{secret}"]
+            result = subprocess.run(
+                ["xfreerdp", "/args-from:stdin"],
+                input="\n".join(options) + "\n", encoding="utf-8", check=False,
+            )
         return result.returncode
     finally:
         try:
@@ -161,6 +193,7 @@ def main(argv=None):
     parser.add_argument("--profile", required=True, help="Profile name from the config.")
     parser.add_argument("--app", help="Optional RemoteApp alias.")
     parser.add_argument("--shell", help="Optional program path to run as the alternate shell (full session).")
+    parser.add_argument("--other-account", action="store_true", help="Prompt for Windows credentials for this connection.")
     parser.add_argument("--wait-secret-timeout", type=int, default=0,
                         help="Kiosk: seconds to wait for the sops password file.")
     parser.add_argument("--wait-network-timeout", type=int, default=0,
@@ -177,6 +210,23 @@ def main(argv=None):
     profile = next((p for p in config.get("profiles", []) if p.get("name") == args.profile), None)
     if profile is None:
         sys.exit(f"Unknown RDP profile: {args.profile}")
+
+    if args.other_account:
+        dialog = config.get("account_dialog")
+        if not dialog:
+            parser.error("Manual Windows account entry is disabled.")
+        if args.app or args.shell:
+            parser.error("--other-account requires a full RDP session.")
+        account = ask_other_account(dialog, profile)
+        if account is None:
+            return 0
+        status = _run_once(config, profile, None, account=account)
+        if status not in (0, 1, 2):
+            subprocess.run([
+                dialog, "--error", "--title=Вход в Windows", "--no-markup",
+                "--text=Връзката не успя. Провери акаунта и паролата или опитай отново.",
+            ], check=False)
+        return status
 
     credentials = config.get("credentials", "interactive")
     if args.wait_secret_timeout > 0 and credentials == "sops" and args.password_file:

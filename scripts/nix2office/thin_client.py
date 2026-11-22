@@ -53,6 +53,10 @@ def choose(machine, q, ask):
         q.Choice('Интерактивно (не се записва)', value='interactive'),
         q.Choice('sops-nix криптирана', value='sops'),
     ], default=tc['credentials']))
+    tc['allow_other_account'] = ask(q.confirm(
+        'Разреши „Вход с друг акаунт“ за готовите RDP профили?',
+        default=tc['allow_other_account'],
+    ))
     is_kiosk = machine['role'] == 'thin'
     if is_kiosk:
         tc['usb_storage'] = ask(q.confirm(
