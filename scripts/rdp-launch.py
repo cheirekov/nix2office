@@ -29,9 +29,11 @@ REDIRECT = {
 }
 
 # FreeRDP X11 exit codes that mean the connection could not be established.
-# Retrying these is useful at boot (network/server not ready). Session-end
-# codes (success=0, disconnect=1, logoff=2) and permanent auth errors must stop.
+# Retrying these is useful at boot (network/server not ready).
 RETRY_EXIT_CODES = frozenset({131, 133, 136, 137, 138, 139, 140, 141, 142, 143, 147, 150, 160})
+# FreeRDP X11 preserves the RDP disconnect reason for these ordinary exits.
+# Windows may report RPC disconnect/logoff (1/2) or user disconnect/logoff (11/12).
+NORMAL_SESSION_EXITS = frozenset({0, 1, 2, 11, 12})
 
 
 def is_program_path(app):
@@ -221,12 +223,14 @@ def main(argv=None):
         if account is None:
             return 0
         status = _run_once(config, profile, None, account=account)
-        if status not in (0, 1, 2):
+        if status in NORMAL_SESSION_EXITS:
+            return 0
+        else:
             subprocess.run([
                 dialog, "--error", "--title=Вход в Windows", "--no-markup",
                 "--text=Връзката не успя. Провери акаунта и паролата или опитай отново.",
             ], check=False)
-        return status
+            return status
 
     credentials = config.get("credentials", "interactive")
     if args.wait_secret_timeout > 0 and credentials == "sops" and args.password_file:
