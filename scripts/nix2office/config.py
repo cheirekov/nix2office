@@ -7,6 +7,7 @@ import re
 import struct
 import tomllib
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 class ConfigError(ValueError):
@@ -14,6 +15,7 @@ class ConfigError(ValueError):
 
 
 CATALOG = json.loads(Path(__file__).with_name("catalog.json").read_text())
+KIOSK_CLIENTS = json.loads(Path(__file__).with_name("kiosk-clients.json").read_text())
 
 DEFAULTS = {
     "version": 1,
@@ -25,7 +27,7 @@ DEFAULTS = {
     "boot_splash": True,
     "performance": {"cpu_governor": "auto"},
     "remote_support": {"mode": "off", "id_server": "", "relay_server": "", "public_key": "", "ip_whitelist": [], "direct_ip_access": False},
-    "thin_client": {"credentials": "interactive", "allow_other_account": False, "allow_personal_connections": False, "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "usb_storage": False, "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": []},
+    "thin_client": {"credentials": "interactive", "allow_other_account": False, "allow_personal_connections": False, "redirect": ["smartcard", "clipboard", "audio", "drives", "usb"], "kep_provider": "", "usb_storage": False, "fullscreen": False, "unicode_keyboard": False, "gfx": "auto", "profiles": [], "portals": [], "aws_workspaces": False, "native_clients": [], "startup": "auto", "startup_profile": ""},
     "tools": {"comma": False},
     "fonts": {"microsoft_core": False, "office_fallbacks": True},
     "devices": {"bluetooth": False, "unfree_firmware": False},
@@ -39,6 +41,7 @@ DEFAULTS = {
                  "frequency_drivers": [], "frequency_governors": [], "frequency_current_governors": [],
                  "memory_mib": 0, "threads": 0, "boot_mode": "unknown", "initrd_modules": [], "pci_ids": [], "usb_ids": [], "bluetooth_detected": False},
 }
+AWS_WORKSPACES_PROFILE = "aws-workspaces"
 BROWSERS = ("firefox-esr", "chromium", "brave", "google-chrome")
 KEP_PROVIDERS = {
     "unspecified": "Ще избера по-късно",
@@ -71,6 +74,25 @@ def pattern(value, field, regex):
     text(value, field)
     if not re.fullmatch(regex, value):
         raise ConfigError(f"{field}: invalid format.")
+
+
+def kiosk_client_names(thin):
+    return ([AWS_WORKSPACES_PROFILE] if thin["aws_workspaces"] else []) + thin["native_clients"]
+
+
+def validate_connection_name(value, used):
+    pattern(value, "Име на връзката", r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
+    if value in used:
+        raise ConfigError("Името вече се използва. Избери друго име на връзката.")
+
+
+def validate_portal_url(value):
+    pattern(value, "HTTPS адрес",
+            r"https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[A-Fa-f0-9:.]+\])(:[0-9]{1,5})?([/?#][^\s\\]*)?")
+    try:
+        urlsplit(value).port
+    except ValueError:
+        raise ConfigError("HTTPS адресът съдържа невалиден хост или порт.") from None
 
 
 def validate_public_key(value):
@@ -269,9 +291,7 @@ def validate_machine(raw):
         if unknown:
             raise ConfigError("thin_client.profiles: unknown field(s) " + ", ".join(sorted(unknown)) + ".")
         name = prof.get("name", "")
-        pattern(name, "thin_client.profiles[].name", r"[A-Za-z0-9][A-Za-z0-9_-]{0,31}")
-        if name in seen:
-            raise ConfigError("thin_client.profiles: profile names must be unique.")
+        validate_connection_name(name, seen)
         seen.add(name)
         host = prof.get("host", "")
         text(host, "thin_client.profiles[].host")
@@ -287,8 +307,47 @@ def validate_machine(raw):
         remote_apps = prof.get("remote_apps", [])
         if not isinstance(remote_apps, list) or any(not isinstance(v, str) or not v.strip() for v in remote_apps):
             raise ConfigError("thin_client.profiles[].remote_apps: expected a list of non-empty names or full paths.")
-    if m["role"] in ("hybrid", "thin") and not profiles:
-        raise ConfigError("thin_client: at least one RDP profile is required when role is hybrid or thin.")
+    portals = tc["portals"]
+    if not isinstance(portals, list):
+        raise ConfigError("thin_client.portals: expected a list of portals.")
+    for portal in portals:
+        if not isinstance(portal, dict) or set(portal) != {"name", "url"}:
+            raise ConfigError("thin_client.portals: each portal requires name and url.")
+        name = portal["name"]
+        validate_connection_name(name, seen)
+        seen.add(name)
+        validate_portal_url(portal["url"])
+    if type(tc["aws_workspaces"]) is not bool:
+        raise ConfigError("thin_client.aws_workspaces: expected true or false.")
+    clients = tc["native_clients"]
+    if (
+        not isinstance(clients, list)
+        or any(not isinstance(name, str) or name not in KIOSK_CLIENTS or name == AWS_WORKSPACES_PROFILE
+               for name in clients)
+        or len(set(clients)) != len(clients)
+    ):
+        raise ConfigError("thin_client.native_clients: expected unique native client names from the kiosk catalog.")
+    for name in kiosk_client_names(tc):
+        validate_connection_name(name, seen)
+        seen.add(name)
+    if tc["startup"] not in ("auto", "menu"):
+        raise ConfigError("thin_client.startup: choose auto or menu.")
+    start = text(tc["startup_profile"], "thin_client.startup_profile")
+    if start and (tc["startup"] != "auto" or start not in seen):
+        raise ConfigError("thin_client.startup_profile: choose an existing profile for automatic startup.")
+    if m["role"] != "thin" and (portals or tc["aws_workspaces"] or tc["startup"] != "auto" or start):
+        raise ConfigError("thin_client: HTTPS portals, AWS WorkSpaces and startup selection are available in the thin kiosk role.")
+    if m["role"] != "thin" and any(
+        m["role"] != "hybrid" or not KIOSK_CLIENTS[name].get("hybrid") for name in clients
+    ):
+        raise ConfigError("thin_client.native_clients: these clients are available only in the thin kiosk role.")
+    if m["role"] == "hybrid" and not profiles:
+        raise ConfigError("thin_client: at least one RDP profile is required in the hybrid role.")
+    if m["role"] == "thin" and not seen:
+        raise ConfigError("thin_client: add at least one RDP, HTTPS or native client connection in the thin kiosk role.")
+    if m["role"] == "thin" and not profiles and (tc["usb_storage"] or provider
+            or tc["credentials"] == "sops" or tc["allow_other_account"] or tc["allow_personal_connections"]):
+        raise ConfigError("thin_client: RDP permissions and secrets require an RDP profile.")
     return m
 
 
@@ -311,14 +370,17 @@ def dump_machine(machine):
         if not isinstance(values, dict):
             continue
         lines.extend(("", f"[{section}]"))
+        arrays_of_tables = {}
         for key, value in values.items():
-            if section == "thin_client" and key in ("kep_provider", "usb_storage", "allow_other_account", "allow_personal_connections") and not value:
+            if section == "thin_client" and key in ("kep_provider", "usb_storage", "allow_other_account", "allow_personal_connections", "aws_workspaces", "native_clients") and not value:
                 continue
             if isinstance(value, list) and value and isinstance(value[0], dict):
-                for item in value:
-                    lines.extend(("", f"[[{section}.{key}]]"))
-                    for k, v in item.items():
-                        lines.append(f"{k} = {json.dumps(v, ensure_ascii=False)}")
+                arrays_of_tables[key] = value
             else:
                 lines.append(f"{key} = {json.dumps(value, ensure_ascii=False)}")
+        for key, items in arrays_of_tables.items():
+            for item in items:
+                lines.extend(("", f"[[{section}.{key}]]"))
+                for k, v in item.items():
+                    lines.append(f"{k} = {json.dumps(v, ensure_ascii=False)}")
     return nl.join(lines) + nl

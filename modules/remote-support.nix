@@ -82,14 +82,17 @@ in
       }
       {
         assertion = config.services.xserver.enable && config.services.xserver.displayManager.lightdm.enable;
-        message = "RustDesk pre-login support requires the office LightDM/Xorg desktop.";
+        message = "RustDesk pre-login support requires LightDM on Xorg.";
       }
       {
         assertion = lib.all ((import ../lib/valid-ipv4-cidr.nix lib)) cfg.ipWhitelist;
         message = "RustDesk IP whitelist entries must be IPv4 CIDR (/0 through /32); 0.0.0.0/0 or an empty list allows access from anywhere.";
       }
     ];
-    environment.systemPackages = [ pkgs.rustdesk-flutter ];
+    environment.systemPackages = lib.optional (
+      config.nix2office.role == "office"
+      || !(builtins.elem "rustdesk" config.nix2office.thinClient.nativeClients)
+    ) pkgs.rustdesk-flutter;
     networking.firewall.extraInputRules = lib.mkIf cfg.directIpAccess (
       lib.concatMapStringsSep "\n" (cidr: "ip saddr ${cidr} tcp dport 21118 accept") directSources
     );
@@ -97,7 +100,7 @@ in
     # Keep LightDM's cookie authentication, including for its greeter account.
     services.xserver.displayManager.lightdm.extraConfig = "user-authority-in-system-dir=false";
     systemd.services.rustdesk = {
-      description = "RustDesk office support (LightDM and desktop)";
+      description = "RustDesk support (LightDM and desktop)";
       wantedBy = [ "multi-user.target" ];
       wants = [
         "network.target"

@@ -82,6 +82,22 @@ let
         }
       ];
     };
+    thinPortal = {
+      role = "thin";
+      browser = "firefox-esr";
+      office = "none";
+      pdf = "none";
+      boot = "bios";
+      bg = "phonetic";
+      services = false;
+      thinStartup = "menu";
+      thinPortals = [
+        {
+          name = "cloud";
+          url = "https://workspace.example.test/start?a=1&b=2";
+        }
+      ];
+    };
   };
   evaluate =
     name: variant:
@@ -90,6 +106,7 @@ let
       thin = role == "thin";
       office = role != "thin";
       hybrid = role == "hybrid";
+      hasRdp = (variant.thinProfiles or [ ]) != [ ];
       c =
         (lib.nixosSystem {
           system = "x86_64-linux";
@@ -104,6 +121,8 @@ let
                 thinClient = {
                   credentials = lib.mkForce (variant.thinCredentials or "interactive");
                   profiles = lib.mkForce (variant.thinProfiles or [ ]);
+                  portals = lib.mkForce (variant.thinPortals or [ ]);
+                  startup = lib.mkForce (variant.thinStartup or "auto");
                 };
                 adminNetwork = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
                 adminAuthorizedKeys = lib.mkForce [ "ssh-ed25519 AAAA evaluation-only" ];
@@ -136,7 +155,8 @@ let
                 bootMode = lib.mkForce variant.boot;
                 keyboard.bulgarian = lib.mkForce variant.bg;
                 sharing.network = lib.mkForce (if variant.services then "0.0.0.0/0" else "192.0.2.0/24");
-                sharing.mode = lib.mkForce (if variant.services then "both" else "client");
+                # Cover deployments converted from Office that still request an SMB server.
+                sharing.mode = lib.mkForce (if variant.services || thin then "both" else "client");
                 vpn.tailscale = lib.mkForce variant.services;
                 vpn.zerotier = lib.mkForce variant.services;
                 vpn.zerotierNetworks = lib.mkForce (lib.optional variant.services "0123456789abcdef");
@@ -160,11 +180,10 @@ let
     assert c.services.displayManager.autoLogin.enable == thin;
     assert !thin || c.services.displayManager.autoLogin.user == "maria";
     assert c.services.displayManager.defaultSession == (if office then "xfce" else "none+openbox");
-    assert
-      (builtins.elem "freerdp" (map lib.getName c.environment.systemPackages)) == (role != "office");
-    assert c.services.pcscd.enable == (role != "office");
+    assert (builtins.elem "freerdp" (map lib.getName c.environment.systemPackages)) == hasRdp;
+    assert c.services.pcscd.enable == hasRdp;
     assert !thin || builtins.hasAttr "openbox/menu.xml" home.xdg.configFile;
-    assert !thin || lib.hasInfix "--wait-network-timeout" home.xdg.configFile."openbox/autostart".text;
+    assert !thin || lib.hasInfix "-solid '#202d39'" home.xdg.configFile."openbox/autostart".text;
     assert !thin || builtins.elem "xterm" (map lib.getName c.environment.systemPackages);
     assert
       !thin || builtins.elem "network-manager-applet" (map lib.getName c.environment.systemPackages);
@@ -216,6 +235,7 @@ let
     assert c.services.samba.enable == variant.services;
     assert (builtins.hasAttr "samba-nmbd" c.systemd.services) == variant.services;
     assert (builtins.hasAttr "wsdd" c.systemd.services) == variant.services;
+    assert !thin || !(builtins.hasAttr "samba/smb.conf" c.environment.etc);
     assert
       lib.hasInfix (
         "ip saddr " + c.nix2office.sharing.network + " tcp dport 139 accept"
@@ -245,9 +265,24 @@ let
     assert !hybrid || home.xdg.desktopEntries."rdp-app-win-1".name == "Accounting";
     assert !hybrid || home.xdg.desktopEntries."rdp-app-win-2".name == "ExpectaClient";
     assert !hybrid || builtins.hasAttr "rdp-shell-win-1" home.xdg.desktopEntries;
-    assert !hybrid || home.xdg.desktopEntries."rdp-shell-win-1".name == "ExpectaClient (Alternate shell)";
+    assert
+      !hybrid || home.xdg.desktopEntries."rdp-shell-win-1".name == "ExpectaClient (Alternate shell)";
     assert !hybrid || lib.hasInfix "--shell" home.xdg.desktopEntries."rdp-shell-win-1".exec;
-    assert !thin || builtins.hasAttr "rdp-full-1" home.xdg.desktopEntries;
+    assert !thin || (builtins.hasAttr "rdp-full-1" home.xdg.desktopEntries) == hasRdp;
+    assert
+      !thin || lib.hasInfix "nix2office-kiosk-connections" home.xdg.configFile."openbox/autostart".text;
+    assert
+      !thin
+      ||
+        lib.hasInfix "nix2office-kiosk-connections --auto" home.xdg.configFile."openbox/autostart".text
+        == (name != "thinPortal");
+    assert
+      name != "thinPortal" || lib.hasInfix ''label="cloud"'' home.xdg.configFile."openbox/menu.xml".text;
+    assert name != "thinPortal" || !(builtins.hasAttr "rdp-personal" home.xdg.desktopEntries);
+    assert
+      !thin
+      ||
+        (builtins.elem "firefox" (map lib.getName c.environment.systemPackages)) == (name == "thinPortal");
     {
       drv = c.system.build.toplevel.drvPath;
       inherit desktop;

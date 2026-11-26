@@ -66,11 +66,12 @@ See the [Bulgarian maintenance guide](docs/maintenance-bg.md).
 
 ## RDP thin client roles
 
-Set role = "hybrid" to keep the office desktop and add a FreeRDP 3 client, or
-role = "thin" for a minimal auto-login kiosk that starts an RDP session without
-installing XFCE, a browser or office apps. Profiles, RemoteApp aliases,
-redirection and the sops password flow are documented in the
-[Bulgarian thin-client guide](docs/rdp-thin-client-bg.md).
+Set `role = "hybrid"` to keep the office desktop and add a FreeRDP 3 client.
+Set `role = "thin"` for an auto-login Openbox kiosk with direct RDP and optional
+HTTPS portals. Choose a connection menu or automatic startup of a selected
+connection. Firefox ESR is included for HTTPS portals. See the
+[Bulgarian thin-client guide](docs/rdp-thin-client-bg.md) for profiles,
+RemoteApp, redirection and SOPS credentials.
 
 ## Start with the assistant
 

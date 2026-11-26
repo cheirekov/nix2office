@@ -8,6 +8,7 @@ TCP reachability of the Windows host, then retries a failed connection with
 backoff. Without those flags it keeps the one-shot behavior used by launchers.
 """
 import argparse
+from contextlib import contextmanager
 import fcntl
 import ipaddress
 import json
@@ -39,6 +40,35 @@ RETRY_EXIT_CODES = frozenset({131, 133, 136, 137, 138, 139, 140, 141, 142, 143, 
 NORMAL_SESSION_EXITS = frozenset({0, 1, 2, 11, 12})
 
 
+class StartupCancelled(Exception):
+    """The kiosk user chose to return to the connection list."""
+
+
+@contextmanager
+def connecting_dialog(zenity, text):
+    if not zenity:
+        yield time.sleep
+        return
+
+    with subprocess.Popen([
+        zenity, "--info", "--title=Свързване…", f"--text={text}",
+        "--ok-label=Към връзките",
+    ], stdin=subprocess.DEVNULL, env={**os.environ, "GSK_RENDERER": "cairo"}) as dialog:
+        def pause(seconds):
+            try:
+                dialog.wait(timeout=seconds)
+            except subprocess.TimeoutExpired:
+                return
+            raise StartupCancelled
+
+        try:
+            yield pause
+            pause(0)  # The connection may have become ready as the user pressed Cancel.
+        finally:
+            if dialog.poll() is None:
+                dialog.terminate()
+
+
 def is_program_path(app):
     """True for a full executable path, False for a bare published RemoteApp alias."""
     return (
@@ -63,7 +93,7 @@ def alternate_shell_flags(app):
     return []
 
 
-def wait_for_file(path, timeout):
+def wait_for_file(path, timeout, pause=None):
     """Return True once path exists (or immediately when disabled), else False."""
     if not path or timeout <= 0:
         return True
@@ -71,21 +101,21 @@ def wait_for_file(path, timeout):
     while time.monotonic() < deadline:
         if Path(path).is_file():
             return True
-        time.sleep(1.0)
+        (pause or time.sleep)(1.0)
     return Path(path).is_file()
 
 
-def wait_for_tcp(host, port, timeout):
+def wait_for_tcp(host, port, timeout, pause=None):
     """Return True once host:port accepts a TCP connection (or when disabled)."""
     if timeout <= 0:
         return True
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with socket.create_connection((host, port), timeout=5):
+            with socket.create_connection((host, port), timeout=2 if pause else 5):
                 return True
         except OSError:
-            time.sleep(2.0)
+            (pause or time.sleep)(2.0)
     return False
 
 
@@ -333,6 +363,43 @@ def personal_menu(dialog, config):
                     return 1
 
 
+def run_profile(config, profile, args):
+    password_file = args.password_file
+    wait_secret = (config.get("credentials") == "sops" and password_file
+                   and args.wait_secret_timeout > 0)
+    host = profile.get("host", "")
+    port = profile.get("port", 3389)
+    if wait_secret or args.wait_network_timeout > 0:
+        message = "Изчакваме отдалечения компютър."
+        if config.get("usb_storage"):
+            message += "\nИзваждане на флашка в RDP: Ctrl+Alt+F8"
+        with connecting_dialog(args.wait_dialog, message) as pause:
+            if wait_secret and not wait_for_file(password_file, args.wait_secret_timeout, pause):
+                print("RDP паролата не е налична; спирам.", file=sys.stderr)
+                return 2
+            # Preserve the regular socket timeout for callers without a dialog.
+            network_pause = pause if args.wait_dialog else None
+            if not wait_for_tcp(host, port, args.wait_network_timeout, network_pause):
+                print(f"RDP хост {host}:{port} не отговаря; спирам.", file=sys.stderr)
+                return 3
+
+    attempts = max(1, args.attempts)
+    for attempt in range(1, attempts + 1):
+        if attempt > 1:
+            print(f"Повтарям RDP ({attempt}/{attempts}) ...", file=sys.stderr)
+        last = _run_once(config, profile, password_file, args.app, args.shell)
+        if args.normalize_session_exit and last in NORMAL_SESSION_EXITS:
+            return 0
+        if last not in RETRY_EXIT_CODES:
+            return last
+        if attempt < attempts and args.backoff > 0:
+            with connecting_dialog(args.wait_dialog, "Подготвяме нов опит за свързване.") as pause:
+                pause(args.backoff)
+    if attempts > 1:
+        print("RDP не успя след няколко опита.", file=sys.stderr)
+    return last
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Launch an RDP session for Nix2office.")
     parser.add_argument("--config", required=True, help="RDP config JSON produced at build time.")
@@ -347,10 +414,13 @@ def main(argv=None):
                         help="Kiosk: seconds to wait for the sops password file.")
     parser.add_argument("--wait-network-timeout", type=int, default=0,
                         help="Kiosk: seconds to wait for TCP reachability of the host.")
+    parser.add_argument("--wait-dialog", help="Zenity executable for cancellable kiosk waits.")
     parser.add_argument("--attempts", type=int, default=1,
                         help="Kiosk: number of connection attempts.")
     parser.add_argument("--backoff", type=int, default=5,
                         help="Kiosk: seconds to sleep between attempts.")
+    parser.add_argument("--normalize-session-exit", action="store_true",
+                        help="Report normal Windows logout and disconnect as success.")
     args = parser.parse_args(argv)
     if args.app and args.shell:
         parser.error("--app and --shell are mutually exclusive.")
@@ -375,34 +445,10 @@ def main(argv=None):
             parser.error("--other-account requires a full RDP session.")
         return run_manual_account(dialog, config, profile)
 
-    credentials = config.get("credentials", "interactive")
-    if args.wait_secret_timeout > 0 and credentials == "sops" and args.password_file:
-        if not wait_for_file(args.password_file, args.wait_secret_timeout):
-            print(f"RDP паролата не е налична ({args.password_file}); спирам.", file=sys.stderr)
-            return 2
-
-    host = profile.get("host", "")
-    port = profile.get("port", 3389)
-    if args.wait_network_timeout > 0:
-        if not wait_for_tcp(host, port, args.wait_network_timeout):
-            print(f"RDP хост {host}:{port} не отговаря; спирам.", file=sys.stderr)
-            return 3
-
-    attempts = max(1, args.attempts)
-    last = 1
-    for attempt in range(1, attempts + 1):
-        if attempt > 1:
-            print(f"Повтарям RDP ({attempt}/{attempts}) ...", file=sys.stderr)
-        last = _run_once(config, profile, args.password_file, args.app, args.shell)
-        if last == 0 or last not in RETRY_EXIT_CODES:
-            # Clean session end (logout/disconnect) or a permanent error: stay
-            # at the openbox menu instead of relaunching a new session.
-            return last
-        if attempt < attempts:
-            time.sleep(max(0, args.backoff))
-    if attempts > 1:
-        print("RDP не успя след няколко опита; отвори менюто с десен бутон на работния плот.", file=sys.stderr)
-    return last
+    try:
+        return run_profile(config, profile, args)
+    except StartupCancelled:
+        return 0
 
 
 if __name__ == "__main__":

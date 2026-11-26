@@ -60,6 +60,20 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(len(files),1)
             self.assertIn('Име на компютъра:',load(files[0])['answers'])
 
+    def test_kiosk_portal_skips_rdp_questions_and_selects_startup(self):
+        from nix2office.thin_client import choose as choose_thin
+
+        m = copy.deepcopy(DEFAULTS)
+        m["role"] = "thin"
+        q = FakeQ()
+        q.values = [["https"], "cloud", "https://workspace.example.org/", False, "auto"]
+        choose_thin(m, q, lambda prompt: prompt.ask())
+        self.assertEqual(m["thin_client"]["startup_profile"], "cloud")
+        self.assertEqual(m["thin_client"]["profiles"], [])
+        self.assertEqual(m["thin_client"]["redirect"], [])
+        self.assertIn("Добави още един HTTPS портал (2)?", [message for message, _ in q.prompts])
+        self.assertNotIn("RDP парола:", [message for message, _ in q.prompts])
+
     def test_checkpoint_and_recover_defaults_without_reusing_other_target(self):
         with tempfile.TemporaryDirectory() as d:
             dest=Path(d)/'.deployment';q=FakeQ();m=Menus(q,dest,'host-a')

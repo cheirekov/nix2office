@@ -95,6 +95,30 @@ class ThinClientTests(unittest.TestCase):
                 "gfx": "bogus",
             }))
 
+    def test_kiosk_portal_and_mixed_profiles_roundtrip(self):
+        portal = {"name": "cloud", "url": "https://login.example.org/workspace?a=1&b=2"}
+        for settings in (
+            {"portals": [portal], "startup": "menu"},
+            {"portals": [portal], "profiles": [{"name": "win", "host": "h", "user": "u"}],
+             "startup": "auto", "startup_profile": "cloud"},
+        ):
+            with self.subTest(settings=settings):
+                value = validate_machine(machine("thin", settings))
+                self.assertEqual(validate_machine(tomllib.loads(dump_machine(value))), value)
+
+    def test_rejects_invalid_portals_and_startup(self):
+        portal = {"name": "cloud", "url": "https://login.example.org"}
+        for settings in (
+            {"portals": [dict(portal, url="http://login.example.org")]},
+            {"portals": [dict(portal, url="https://user@host")]},
+            {"portals": [portal], "startup_profile": "missing"},
+            {"portals": [portal], "startup": "menu", "startup_profile": "cloud"},
+            {"portals": [portal], "credentials": "sops"},
+            {"portals": [portal], "profiles": [{"name": "cloud", "host": "h", "user": "u"}]},
+        ):
+            with self.subTest(settings=settings), self.assertRaises(ConfigError):
+                validate_machine(machine("thin", settings))
+
     def test_machine_nix_allowlist_matches_schema(self):
         machine_nix = (Path(__file__).resolve().parents[1] / "modules" / "machine.nix").read_text()
         match = re.search(r"thin_client = \[(.*?)\]", machine_nix, re.S)

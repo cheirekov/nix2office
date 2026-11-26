@@ -6,7 +6,8 @@
 }:
 let
   cfg = config.nix2office;
-  server = cfg.sharing.mode == "both";
+  smbEnabled = cfg.role != "thin";
+  server = smbEnabled && cfg.sharing.mode == "both";
   sharePath = "/home/${cfg.user.name}/${cfg.sharing.folder}";
 in
 {
@@ -17,7 +18,7 @@ in
         "both"
       ];
       default = "client";
-      description = "SMB client only, or client plus an authenticated server share.";
+      description = "SMB client only, or client plus an authenticated server share. Applies to office and hybrid roles.";
     };
     workgroup = lib.mkOption {
       type = lib.types.strMatching "[A-Za-z0-9][A-Za-z0-9_-]{0,14}";
@@ -81,7 +82,7 @@ in
         }
       ];
     }
-    (lib.mkIf (!server) {
+    (lib.mkIf (smbEnabled && !server) {
       environment.etc."samba/smb.conf".text = ''
         [global]
         workgroup = ${cfg.sharing.workgroup}

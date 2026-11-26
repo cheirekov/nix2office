@@ -270,6 +270,34 @@ class RdpLaunchTests(unittest.TestCase):
                 self.assertEqual(rdp_launch.main(argv), 141)
             self.assertEqual(len(calls), 3)
 
+    def test_kiosk_cancel_while_waiting_for_network_does_not_launch_rdp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            argv = ["--config", str(config), "--profile", "win", "--wait-dialog", "zenity",
+                    "--wait-network-timeout", "120", "--attempts", "6"]
+            with patch.object(rdp_launch.subprocess, "Popen") as popen, patch.object(
+                rdp_launch.socket, "create_connection", side_effect=OSError("refused")
+            ), patch.object(rdp_launch, "_run_once") as launch:
+                dialog = popen.return_value.__enter__.return_value
+                dialog.wait.return_value = 1
+                dialog.poll.return_value = 1
+                self.assertEqual(rdp_launch.main(argv), 0)
+                launch.assert_not_called()
+
+    def test_kiosk_cancel_between_retries_stops_automatic_start(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
+            argv = ["--config", str(config), "--profile", "win", "--wait-dialog", "zenity",
+                    "--attempts", "6", "--backoff", "5"]
+            with patch.object(rdp_launch.subprocess, "Popen") as popen, patch.object(
+                rdp_launch, "_run_once", return_value=141
+            ) as launch:
+                dialog = popen.return_value.__enter__.return_value
+                dialog.wait.return_value = 0
+                dialog.poll.return_value = 0
+                self.assertEqual(rdp_launch.main(argv), 0)
+                launch.assert_called_once()
+
     def test_logoff_does_not_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = write_config(tmp, [{"name": "win", "host": "192.0.2.10", "user": "u"}])
@@ -285,6 +313,13 @@ class RdpLaunchTests(unittest.TestCase):
             ):
                 self.assertEqual(rdp_launch.main(argv), 2)
             self.assertEqual(len(calls), 1)
+            with patch.object(rdp_launch, "_run_once", return_value=2) as launch:
+                self.assertEqual(rdp_launch.main([*argv, "--normalize-session-exit"]), 0)
+                launch.assert_called_once()
+            with patch.object(rdp_launch, "wait_for_tcp", return_value=False):
+                self.assertEqual(rdp_launch.main([
+                    *argv, "--normalize-session-exit", "--wait-network-timeout", "1",
+                ]), 3)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
   ...
 }:
 let
+  kioskClients = builtins.fromJSON (builtins.readFile ../scripts/nix2office/kiosk-clients.json);
   cfg = config.nix2office;
   applications = import ../lib/applications.nix {
     inherit pkgs;
@@ -154,6 +155,56 @@ in
         );
         default = [ ];
         description = "RDP profiles; each can publish RemoteApp aliases.";
+      };
+      portals = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.strMatching "[A-Za-z0-9][A-Za-z0-9_-]{0,31}";
+              };
+              url = lib.mkOption {
+                type =
+                  lib.types.addCheck
+                    (lib.types.strMatching "https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|[[][A-Fa-f0-9:.]+[]])(:[0-9]{1,5})?([/?#][^[:space:][:cntrl:]]*)?")
+                    (url: !(lib.hasInfix "\\" url));
+              };
+            };
+          }
+        );
+        default = [ ];
+        description = "HTTPS portals available in the thin kiosk menu.";
+      };
+      awsWorkSpaces = lib.mkEnableOption "the native Amazon WorkSpaces client in the thin kiosk";
+      nativeClients = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.enum (builtins.attrNames (removeAttrs kioskClients [ "aws-workspaces" ]))
+        );
+        default = [ ];
+        description = "Optional native clients for the kiosk and selected clients for Hybrid.";
+      };
+      dcvConnectionFile = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "/.+");
+        default = null;
+        description = "Optional runtime path to an Amazon DCV connection file, for example a sops-nix secret with a .dcv filename.";
+      };
+      vncPasswordFile = lib.mkOption {
+        type = lib.types.nullOr (lib.types.strMatching "/.+");
+        default = null;
+        description = "Optional runtime path to a TigerVNC password file in vncpasswd format.";
+      };
+      startup = lib.mkOption {
+        type = lib.types.enum [
+          "auto"
+          "menu"
+        ];
+        default = "auto";
+        description = "Automatically open one connection or display the kiosk menu at login.";
+      };
+      startupProfile = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Connection name for automatic startup. Empty selects the first RDP profile, then the first portal, then the first native client.";
       };
       fullscreen = lib.mkOption {
         type = lib.types.bool;
@@ -399,6 +450,11 @@ in
       enable = true;
       browsing = true;
       defaultShared = false;
+      # The NixOS printing module adds smbspool even when Samba is disabled.
+      # Keep the other CUPS backends available for local and IPP printing.
+      bindirCmds = lib.mkIf (!officeEnabled) ''
+        rm -f "$out/lib/cups/backend/smb"
+      '';
     };
     services.avahi = {
       enable = true;
@@ -411,7 +467,11 @@ in
     };
     services.saned.enable = false;
     services.udisks2.enable = true;
-    services.gvfs.enable = true;
+    services.gvfs = {
+      enable = true;
+      # Thunar still gets local mounts and trash using the non-GNOME GVfs build.
+      package = lib.mkIf (!officeEnabled) (pkgs.gvfs.override { samba = null; });
+    };
     services.tumbler.enable = true;
     services.fstrim.enable = true;
     programs.firefox = {
@@ -462,10 +522,16 @@ in
         ])
         ++ lib.optional cfg.fonts.microsoftCore pkgs.corefonts
       );
-    # Allow only the explicitly selected proprietary browser, not every unfree package.
+    # Limit unfree software to the browser and explicitly enabled features.
     nixpkgs.config.allowUnfreePredicate =
       pkg:
       lib.getName pkg == "google-chrome"
+      || (
+        cfg.role != "office"
+        && lib.any (name: builtins.elem (lib.getName pkg) (kioskClients.${name}.unfree or [ ])) (
+          lib.optional cfg.thinClient.awsWorkSpaces "aws-workspaces" ++ cfg.thinClient.nativeClients
+        )
+      )
       || (cfg.fonts.microsoftCore && lib.getName pkg == "corefonts")
       || (
         cfg.devices.unfreeFirmware

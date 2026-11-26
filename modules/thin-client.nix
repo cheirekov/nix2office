@@ -9,7 +9,47 @@ let
   thin = cfg.thinClient;
   enabled = cfg.role != "office";
   thinOnly = cfg.role == "thin";
-  usbStorage = thinOnly && thin.usbStorage;
+  hasRdp = thin.profiles != [ ];
+  kioskClients = builtins.fromJSON (builtins.readFile ../scripts/nix2office/kiosk-clients.json);
+  clientNames = lib.optional (thinOnly && thin.awsWorkSpaces) "aws-workspaces" ++ thin.nativeClients;
+  needsLoginBrowser = lib.any (name: kioskClients.${name}.browser or false) clientNames;
+  clientCommand =
+    name:
+    let
+      client = kioskClients.${name};
+      exe = lib.getExe' pkgs.${client.package} client.program;
+    in
+    exe
+    + lib.optionalString (
+      name == "amazon-dcv" && thin.dcvConnectionFile != null
+    ) " ${lib.escapeShellArg thin.dcvConnectionFile}"
+    + lib.optionalString (
+      name == "tigervnc" && thin.vncPasswordFile != null
+    ) " -PasswordFile ${lib.escapeShellArg thin.vncPasswordFile}";
+  usbStorage = thinOnly && hasRdp && thin.usbStorage;
+  portalLauncher =
+    portal:
+    pkgs.writeShellScript "nix2office-portal-${portal.name}" ''
+      set -eu
+      umask 077
+      profile=$(${pkgs.coreutils}/bin/mktemp -d "$XDG_RUNTIME_DIR/nix2office-portal.XXXXXXXX")
+      trap '${pkgs.coreutils}/bin/rm -rf -- "$profile"' EXIT
+      ${lib.getExe pkgs.firefox-esr} --no-remote --profile "$profile" --kiosk ${lib.escapeShellArg portal.url}
+    '';
+  profileNames = map (p: p.name) (thin.profiles ++ thin.portals) ++ clientNames;
+  startupName =
+    if thin.startupProfile == "" then (lib.head (profileNames ++ [ "" ])) else thin.startupProfile;
+  startupPortal = lib.findFirst (p: p.name == startupName) null thin.portals;
+  kioskRdp = "${launcher} --normalize-session-exit";
+  rdpProfile = name: "${kioskRdp} --profile ${lib.escapeShellArg name}";
+  usbHint = "Изваждане на флашка в RDP: Ctrl+Alt+F8";
+  startupCommand =
+    if builtins.elem startupName clientNames then
+      clientCommand startupName
+    else if startupPortal != null then
+      toString (portalLauncher startupPortal)
+    else
+      "${rdpProfile startupName} --wait-dialog ${lib.getExe pkgs.zenity} --wait-secret-timeout 60 --wait-network-timeout 120 --attempts 6 --backoff 5";
   freerdp = import ../packages/freerdp-vaapi.nix {
     inherit pkgs;
     kioskUsb = usbStorage;
@@ -30,7 +70,7 @@ let
         ;;
     esac
   '';
-  smartcard = builtins.elem "smartcard" thin.redirect;
+  smartcard = hasRdp && builtins.elem "smartcard" thin.redirect;
   xml = s: builtins.replaceStrings [ "&" "<" ">" ] [ "&amp;" "&lt;" "&gt;" ] s;
   appLabel =
     app:
@@ -126,62 +166,132 @@ let
     <item label="${xml label}">
       <action name="Execute"><command>${xml command}</command></action>
     </item>'';
-  fullItems = lib.concatMapStringsSep "\n" (
-    p:
-    menuEntry "RDP — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name}"
-    + lib.optionalString thin.allowOtherAccount (
-      menuEntry "Вход с друг акаунт — ${p.name}" "${launcher} --profile ${lib.escapeShellArg p.name} --other-account"
+  item = kind: label: command: { inherit kind label command; };
+  connections =
+    map (p: item "Отдалечен работен плот" p.name (rdpProfile p.name)) thin.profiles
+    ++ map (p: item "Работен портал" p.name (toString (portalLauncher p))) thin.portals
+    ++ lib.concatMap (
+      p:
+      map (
+        app:
+        item "Отдалечено приложение" "${appLabel (lib.removePrefix "||" app)} (${p.name})"
+          "${rdpProfile p.name} --app ${lib.escapeShellArg app}"
+      ) p.remoteApps
+    ) thin.profiles
+    ++ map (name: item "Клиент" kioskClients.${name}.label (clientCommand name)) clientNames
+    ++ lib.optionals thin.allowOtherAccount (
+      map (
+        p: item "Друг акаунт" "Вход с друг акаунт — ${p.name}" "${rdpProfile p.name} --other-account"
+      ) thin.profiles
     )
-  ) thin.profiles;
-  appItems = lib.concatMapStringsSep "\n" (
+    ++ lib.optional thin.allowPersonalConnections (
+      item "Лични" "Лични RDP връзки" "${launcher} --personal"
+    );
+  localItems = [
+    (item "Локално" "Мрежа и Wi-Fi" networkSettings)
+    (item "Локално" "Споделени файлове" "${lib.getExe pkgs.thunar} /home/${cfg.user.name}/Shared")
+  ]
+  ++ lib.optional usbStorage (item "Локално" "Безопасно изваждане на USB" (toString usbDialog));
+  wifiPython = pkgs.python3.withPackages (ps: [ ps.pygobject3 ]);
+  networkSettings = toString (
+    pkgs.writeShellScript "nix2office-kiosk-wifi" ''
+        export GI_TYPELIB_PATH=${config.networking.networkmanager.package}/lib/girepository-1.0
+      exec ${wifiPython}/bin/python ${../scripts/kiosk-wifi.py} \
+          ${lib.getExe pkgs.zenity} ${pkgs.networkmanagerapplet}/bin/nm-connection-editor
+    ''
+  );
+  settings = [
+    (item "Локално" "Мрежа" networkSettings)
+    (item "Локално" "Звук" (lib.getExe pkgs.pavucontrol))
+  ]
+  ++ lib.optional cfg.devices.bluetooth (
+    item "Локално" "Bluetooth" "${pkgs.blueman}/bin/blueman-manager"
+  );
+  diagnostics = [
+    (item "Локално" "Терминал" (lib.getExe pkgs.xterm))
+    (item "Локално" "Системен монитор" "${lib.getExe pkgs.xterm} -e ${lib.getExe pkgs.htop}")
+  ]
+  ++ lib.concatMap (
     p:
-    lib.concatMapStringsSep "\n" (
+    map (
       app:
-      menuEntry "${appLabel app} (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --app ${lib.escapeShellArg app}"
-    ) p.remoteApps
+      item "Alternate shell" "${appLabel app} (${p.name})"
+        "${rdpProfile p.name} --shell ${lib.escapeShellArg app}"
+    ) (builtins.filter (app: isPath app && !(lib.hasPrefix "||" app)) p.remoteApps)
   ) thin.profiles;
-  shellItems = lib.concatMapStringsSep "\n" (
-    p:
-    lib.concatMapStringsSep "\n" (
-      app:
-      menuEntry "${appLabel app} - Alternate shell (${p.name})" "${launcher} --profile ${lib.escapeShellArg p.name} --shell ${lib.escapeShellArg app}"
-    ) (builtins.filter isPath p.remoteApps)
-  ) thin.profiles;
+  power = [
+    (item "Локално" "Изключи" "${pkgs.systemd}/bin/systemctl poweroff")
+    (item "Локално" "Рестартирай" "${pkgs.systemd}/bin/systemctl reboot")
+  ];
+  sections =
+    lib.mapAttrs (section: lib.imap0 (i: details: details // { id = "${section}-${toString i}"; }))
+      {
+        main = connections ++ localItems;
+        inherit settings diagnostics power;
+      };
+  submenus = [
+    "settings"
+    "Настройки"
+    "Локално"
+    "diagnostics"
+    "Диагностика"
+    "Локално"
+    "power"
+    "Изключване и рестарт"
+    "Локално"
+  ];
+  kioskConnections = pkgs.writeShellScript "nix2office-kiosk-connections" ''
+    zenity=${lib.getExe pkgs.zenity}
+    flock=${pkgs.util-linux}/bin/flock
+    usb_hint=${lib.escapeShellArg (lib.optionalString usbStorage usbHint)}
+    ${lib.concatStringsSep "\n" (
+      lib.mapAttrsToList (section: items: ''
+        rows_${section}=( ${
+          lib.escapeShellArgs (
+            lib.concatMap (entry: [
+              entry.id
+              entry.label
+              entry.kind
+            ]) items
+            ++ lib.optionals (section == "main") submenus
+          )
+        } )
+      '') sections
+    )}
+    run_action() {
+      case "$1" in
+        network) ${networkSettings} ;;
+        ${lib.optionalString (thin.startup == "auto") ''
+          auto) ${startupCommand} ;;
+        ''}
+        ${lib.concatMapStringsSep "\n" (entry: "${entry.id}) ${entry.command} ;;") (
+          lib.concatLists (lib.attrValues sections)
+        )}
+        *) return 1 ;;
+      esac
+    }
+    ${builtins.readFile ../scripts/kiosk-connections.sh}
+  '';
+  showItems = lib.concatMapStringsSep "\n" (entry: menuEntry entry.label entry.command);
+  menuGroup = id: label: items: ''
+    <menu id="${id}" label="${label}">
+      ${showItems items}
+    </menu>
+  '';
   menuXml = ''
     <?xml version="1.0" encoding="UTF-8"?>
     <openbox_menu xmlns="http://openbox.org/3.4/menu">
       <menu id="root-menu" label="Nix2office">
-    ${fullItems}
-    ${appItems}
-    ${shellItems}
-        ${lib.optionalString thin.allowPersonalConnections (
-          menuEntry "Лични RDP връзки" "${launcher} --personal"
+        ${menuEntry "Отвори екрана Връзки" (toString kioskConnections)}
+        ${menuGroup "kiosk-direct" "Директно стартиране" connections}
+        ${showItems localItems}
+        ${lib.optionalString hasRdp (
+          menuEntry "Прекрати RDP сесията и върни менюто" "${pkgs.procps}/bin/pkill -x xfreerdp"
         )}
-        ${menuEntry "Файлов мениджър — Shared" "${pkgs.thunar}/bin/thunar /home/${cfg.user.name}/Shared"}
-        ${lib.optionalString usbStorage (menuEntry "Безопасно изваждане на USB" (toString usbDialog))}
-        <item label="Прекрати RDP сесията и върни менюто">
-          <action name="Execute"><command>${pkgs.procps}/bin/pkill -x xfreerdp</command></action>
-        </item>
         <separator />
-        <item label="Настройки на мрежата">
-          <action name="Execute"><command>${pkgs.networkmanagerapplet}/bin/nm-connection-editor</command></action>
-        </item>
-        <item label="Терминал">
-          <action name="Execute"><command>${pkgs.xterm}/bin/xterm</command></action>
-        </item>
-        <item label="Звук">
-          <action name="Execute"><command>${pkgs.pavucontrol}/bin/pavucontrol</command></action>
-        </item>
-        <item label="Системен монитор">
-          <action name="Execute"><command>${pkgs.xterm}/bin/xterm -e ${pkgs.htop}/bin/htop</command></action>
-        </item>
-        <separator />
-        <item label="Рестартирай">
-          <action name="Execute"><command>${pkgs.systemd}/bin/systemctl reboot</command></action>
-        </item>
-        <item label="Изключи">
-          <action name="Execute"><command>${pkgs.systemd}/bin/systemctl poweroff</command></action>
-        </item>
+        ${menuGroup "kiosk-settings" "Настройки" settings}
+        ${menuGroup "kiosk-diagnostics" "Диагностика" diagnostics}
+        ${menuGroup "kiosk-power" "Изключване и рестарт" power}
       </menu>
     </openbox_menu>
   '';
@@ -190,22 +300,57 @@ in
   config = lib.mkIf enabled {
     assertions = [
       {
-        assertion = thin.profiles != [ ];
-        message = "The RDP thin client requires at least one profile.";
+        assertion = profileNames != [ ];
+        message = "Add an RDP connection or a kiosk HTTPS portal or native client.";
+      }
+      {
+        assertion =
+          thinOnly
+          || (
+            thin.portals == [ ] && !thin.awsWorkSpaces && thin.startup == "auto" && thin.startupProfile == ""
+          );
+        message = "HTTPS portals, AWS WorkSpaces and startup selection require the thin kiosk role.";
+      }
+      {
+        assertion = thinOnly || lib.all (name: kioskClients.${name}.hybrid or false) thin.nativeClients;
+        message = "These native clients require the thin kiosk role.";
+      }
+      {
+        assertion = lib.length profileNames == lib.length (lib.unique profileNames);
+        message = "Kiosk connection names must be unique.";
+      }
+      {
+        assertion =
+          thin.startupProfile == ""
+          || (thin.startup == "auto" && builtins.elem thin.startupProfile profileNames);
+        message = "The automatic startup connection must name an existing profile.";
+      }
+      {
+        assertion =
+          hasRdp
+          || (
+            !thin.usbStorage
+            && !thin.allowOtherAccount
+            && !thin.allowPersonalConnections
+            && thin.credentials != "sops"
+          );
+        message = "RDP permissions and secrets require an RDP profile.";
       }
       {
         assertion = !thin.usbStorage || thinOnly;
         message = "USB storage redirection is available only in the thin kiosk role.";
       }
     ];
-    environment.systemPackages = [
-      freerdp
-    ]
-    ++ lib.optionals thinOnly [
-      pkgs.xterm
-      pkgs.networkmanagerapplet
-      pkgs.thunar
-    ];
+    environment.systemPackages =
+      lib.optional hasRdp freerdp
+      ++ lib.optional (needsLoginBrowser || (thinOnly && thin.portals != [ ])) pkgs.firefox-esr
+      ++ lib.optional needsLoginBrowser pkgs.xdg-utils
+      ++ map (name: pkgs.${kioskClients.${name}.package}) clientNames
+      ++ lib.optionals thinOnly [
+        pkgs.xterm
+        pkgs.networkmanagerapplet
+        pkgs.thunar
+      ];
     services.pcscd.enable = smartcard;
     systemd.services.nix2office-usb = lib.mkIf usbStorage {
       description = "Mount removable USB storage for the Nix2office kiosk";
@@ -250,18 +395,20 @@ in
         ''
       );
       xdg.desktopEntries = entries;
+      xdg.mimeApps = lib.mkIf needsLoginBrowser {
+        enable = true;
+        defaultApplications = {
+          "x-scheme-handler/http" = [ "firefox-esr.desktop" ];
+          "x-scheme-handler/https" = [ "firefox-esr.desktop" ];
+        };
+      };
       xdg.configFile."openbox/menu.xml" = lib.mkIf thinOnly {
         text = menuXml;
       };
       xdg.configFile."openbox/autostart" = lib.mkIf thinOnly {
         text = ''
-          (
-            ${lib.optionalString usbStorage ''
-              ${lib.getExe pkgs.zenity} --info --timeout=4 --title="Nix2office" \
-                --text="Изваждане на флашка: Ctrl+Alt+F8" || true
-            ''}
-            exec ${launcher} --profile "${(lib.head thin.profiles).name}" --wait-secret-timeout 60 --wait-network-timeout 120 --attempts 6 --backoff 5
-          ) &
+          ${lib.getExe pkgs.xsetroot} -solid '#202d39'
+          ${kioskConnections}${lib.optionalString (thin.startup == "auto") " --auto"} &
         '';
         executable = true;
       };

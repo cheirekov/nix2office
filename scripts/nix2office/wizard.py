@@ -132,7 +132,7 @@ def wizard(args):
     m["role"] = select("Роля на машината:", [
         ("office", "Офис — пълен локален десктоп"),
         ("hybrid", "Офис + RDP thin client"),
-        ("thin", "Само thin client — минимална RDP kiosk система"),
+        ("thin", "Киоск — само отдалечени връзки"),
     ], m["role"])
     if inventory and not inventory.get("bluetooth_detected"):
         m["devices"]["bluetooth"] = False
@@ -198,8 +198,6 @@ def wizard(args):
             ("both", "PDF Arranger + Xournal++"),
         ], m["apps"]["pdf_editor"])
         m["apps"]["extra"] = ask(q.checkbox("Допълнителни програми (Space за избор; може без отметки):", choices=[q.Choice(v["label"], value=k) for k, v in CATALOG.items()]))
-        from .remote_support import choose
-        choose(m, q, ask)
         m["tools"]["comma"] = ask(q.confirm("Comma — временни програми с готов малък индекс (отделен фиксиран nixpkgs)?", default=False))
         m["fonts"]["office_fallbacks"] = ask(q.confirm("Carlito/Caladea — съвместими заместители за Calibri/Cambria?", default=True))
         m["fonts"]["microsoft_core"] = ask(q.confirm("Microsoft Core Fonts — Times New Roman, Arial и др. (unfree, със собствен лиценз)?", default=False))
@@ -207,6 +205,8 @@ def wizard(args):
     if m["role"] != "office":
         from .thin_client import choose as choose_thin
         choose_thin(m, q, ask)
+        from .remote_support import choose as choose_support
+        choose_support(m, q, ask)
     m["keyboard"]["bulgarian"] = select("Българска клавиатура (плюс английска):", [("phonetic", "Фонетична"), ("bds", "БДС")], "phonetic")
     m["boot_splash"] = ask(q.confirm("Графичен splash при зареждане?", default=True))
     if m["role"] != "thin":

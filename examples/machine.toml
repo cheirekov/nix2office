@@ -4,7 +4,7 @@ hostname = "office-pc"
 disk = "/dev/disk/by-id/ata-REPLACE_WITH_INTERNAL_SSD"
 boot_mode = "bios" # bios or uefi; match the rescue USB's boot mode
 profile = "light" # light or standard; starting suggestions, not hard limits
-role = "office" # office, hybrid (office + RDP) or thin (RDP kiosk only)
+role = "office" # office, hybrid (office + RDP) or thin (RDP/HTTPS kiosk)
 boot_splash = true
 
 [performance]

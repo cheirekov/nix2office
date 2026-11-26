@@ -10,7 +10,7 @@ import string
 import subprocess
 from urllib.parse import parse_qs, urlparse
 
-from .config import ConfigError, KEP_PROVIDERS, dump_machine, load_machine, validate_machine
+from .config import ConfigError, KEP_PROVIDERS, KIOSK_CLIENTS, dump_machine, kiosk_client_names, load_machine, validate_machine
 
 
 class PreparationError(RuntimeError):
@@ -271,19 +271,31 @@ def summary(m):
     print(f'{machine} | роля: {role}')
     print(f'Потребител: {u["name"]} — {u["full_name"]} | e-mail: {u["email"] or "(не е зададен)"}')
     print(f'Диск: {m["disk"]}')
+    tc = m["thin_client"]
+    clients = kiosk_client_names(tc)
     if m["role"] == "thin":
-        print("Приложения: без локален браузър/офис (thin client)")
+        if tc["portals"] or any(KIOSK_CLIENTS[name].get("browser") for name in clients):
+            print("Браузър за портали и уеб вход: Firefox ESR")
     else:
         print(f'Приложения: {m["apps"]["browser"]}; офис: {" + ".join(office) or "без офис пакет"}; PDF: {m["apps"]["pdf_editor"]}; Nextcloud: {m["apps"]["nextcloud"]}')
     if m["role"] != "office":
-        tc = m["thin_client"]
+        if clients:
+            print("Нативни клиенти: " + ", ".join(KIOSK_CLIENTS[name]["label"] for name in clients))
         profiles = ", ".join(f'{p["name"]} ({p["host"]}:{p.get("port", 3389)})' for p in tc["profiles"])
-        print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
+        if profiles:
+            print(f'RDP профили: {profiles}; парола: {tc["credentials"]}; пренасочване: {", ".join(tc["redirect"])}')
         if tc["allow_other_account"]:
             print("RDP: разрешен е вход с друг акаунт за готовите профили")
         if tc["allow_personal_connections"]:
             print("RDP: разрешени са лични връзки")
         if m["role"] == "thin":
+            if tc["portals"]:
+                print("HTTPS портали: " + ", ".join(p["name"] for p in tc["portals"]))
+            connections = [p["name"] for p in tc["profiles"] + tc["portals"]] + clients
+            first = connections[0]
+            print("При вход: меню" if tc["startup"] == "menu"
+                  else f'При вход: автоматично отваряне на {tc["startup_profile"] or first}')
+        if m["role"] == "thin" and profiles:
             kep = KEP_PROVIDERS.get(tc["kep_provider"], "доставчикът не е зададен")
             print(f'КЕП през RDP: {kep}' if "smartcard" in tc["redirect"] else 'КЕП през RDP: изключен')
             if tc["usb_storage"]:
@@ -294,12 +306,14 @@ def summary(m):
     if rs["mode"] != "off":
         rustdesk += " | IP: " + (", ".join(rs["ip_whitelist"]) or "всички (празен списък)")
         rustdesk += " | директен IP: " + ("да" if rs["direct_ip_access"] else "не")
-    print("RustDesk: " + rustdesk)
+    print("RustDesk — входяща поддръжка: " + rustdesk)
     if m["role"] != "thin":
         print("Comma с готов малък индекс: " + ("включен" if m["tools"]["comma"] else "изключен"))
         print("Допълнителни програми: " + (", ".join(m["apps"]["extra"]) or "няма"))
         print(f'Шрифтове: Microsoft Core={m["fonts"]["microsoft_core"]}; Carlito/Caladea={m["fonts"]["office_fallbacks"]}')
-    print(f'Клавиатура: US + BG {m["keyboard"]["bulgarian"]}; Workgroup: {m["sharing"]["workgroup"]} ({m["sharing"]["mode"]})')
+    print(f'Клавиатура: US + BG {m["keyboard"]["bulgarian"]}')
+    if m["role"] != "thin":
+        print(f'Workgroup: {m["sharing"]["workgroup"]} ({m["sharing"]["mode"]})')
     print('VPN: ' + (', '.join(k for k in ("wireguard", "tailscale", "zerotier") if m["vpn"][k]) or '(няма)'))
     print(f'Bluetooth: {m["devices"]["bluetooth"]}; unfree firmware: {m["devices"]["unfree_firmware"]}')
     access = "всички IPv4 (0.0.0.0/0)" if m['admin']['network'] == "0.0.0.0/0" else m['admin']['network']

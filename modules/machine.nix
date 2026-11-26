@@ -58,6 +58,11 @@ let
       "unicode_keyboard"
       "gfx"
       "profiles"
+      "portals"
+      "aws_workspaces"
+      "native_clients"
+      "startup"
+      "startup_profile"
     ];
     fonts = [
       "microsoft_core"
@@ -249,6 +254,11 @@ in
         "drives"
         "usb"
       ];
+    portals = thin_client.portals or [ ];
+    awsWorkSpaces = thin_client.aws_workspaces or false;
+    nativeClients = thin_client.native_clients or [ ];
+    startup = thin_client.startup or "auto";
+    startupProfile = thin_client.startup_profile or "";
     profiles = map (p: {
       name = p.name;
       host = p.host;

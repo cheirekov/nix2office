@@ -1,0 +1,89 @@
+{
+  "aws-workspaces": {
+    "label": "Amazon WorkSpaces — нативен клиент",
+    "package": "aws-workspaces",
+    "program": "workspacesclient",
+    "unfree": ["aws-workspaces", "workspacesclient"],
+    "browser": true
+  },
+  "omnissa-horizon": {
+    "label": "Omnissa Horizon",
+    "package": "omnissa-horizon-client",
+    "program": "horizon-client",
+    "unfree": ["omnissa-horizon-client"],
+    "browser": true
+  },
+  "citrix-workspace": {
+    "label": "Citrix Workspace — изисква ръчно свален инсталатор",
+    "package": "citrix_workspace",
+    "program": "selfservice",
+    "unfree": ["citrix-workspace"],
+    "browser": true
+  },
+  "amazon-dcv": {
+    "label": "Amazon DCV — за самостоятелен DCV сървър",
+    "package": "nice-dcv-client",
+    "program": "dcvviewer",
+    "unfree": ["nice-dcv-client"]
+  },
+  "nomachine": {
+    "label": "NoMachine",
+    "package": "nomachine-client",
+    "program": "nxplayer",
+    "unfree": ["nomachine-client"]
+  },
+  "remmina": {
+    "label": "Remmina — RDP, VNC и SSH",
+    "package": "remmina",
+    "program": "remmina"
+  },
+  "tigervnc": {
+    "label": "TigerVNC — VNC",
+    "package": "tigervnc",
+    "program": "vncviewer"
+  },
+  "virt-viewer": {
+    "label": "Remote Viewer — SPICE и VNC",
+    "package": "virt-viewer",
+    "program": "remote-viewer"
+  },
+  "x2go": {
+    "label": "X2Go — отдалечен Linux десктоп",
+    "package": "x2goclient",
+    "program": "x2goclient"
+  },
+  "rustdesk": {
+    "label": "RustDesk — отваряне на отдалечени връзки",
+    "package": "rustdesk-flutter",
+    "program": "rustdesk",
+    "hybrid": true
+  },
+  "anydesk": {
+    "label": "AnyDesk",
+    "package": "anydesk",
+    "program": "anydesk",
+    "unfree": [
+      "anydesk"
+    ],
+    "hybrid": true
+  },
+  "realvnc-viewer": {
+    "label": "RealVNC Viewer",
+    "package": "realvnc-vnc-viewer",
+    "program": "vncviewer",
+    "unfree": ["realvnc-vnc-viewer"],
+    "hybrid": true
+  },
+  "gnome-connections": {
+    "label": "GNOME Connections — RDP и VNC",
+    "package": "gnome-connections",
+    "program": "gnome-connections",
+    "hybrid": true
+  },
+  "moonlight": {
+    "label": "Moonlight — стрийминг от Sunshine",
+    "package": "moonlight-qt",
+    "program": "moonlight",
+    "hybrid": true
+  }
+}
